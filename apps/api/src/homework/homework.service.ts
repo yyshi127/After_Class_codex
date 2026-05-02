@@ -1,5 +1,9 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, PracticeSheetStatus, SimilarQuestionStatus, UserRole } from "@prisma/client";
+import { existsSync, mkdirSync } from "node:fs";
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import { Document, Packer, Paragraph, TextRun } from "docx";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -231,22 +235,86 @@ export class HomeworkService {
         studentId: student.id,
         status: SimilarQuestionStatus.selected,
       },
+      include: {
+        mistakeItem: { select: { subject: true, knowledgePoint: true } },
+      },
     });
 
     if (selectedQuestions.length === 0) {
       throw new NotFoundException("No selected similar questions found");
     }
 
+    const title = dto.title ?? `${student.name} 错题练习单`;
+    const filePath = await this.writePracticeSheetDocx(student.id, title, selectedQuestions);
+
     return this.prisma.practiceSheet.create({
       data: {
         campusId: student.campusId,
         studentId: student.id,
         teacherId: user.id,
-        title: dto.title ?? `${student.name} 错题练习单`,
-        fileUrl: `pending://practice-sheets/${student.id}/${Date.now()}.docx`,
+        title,
+        fileUrl: `local://${filePath}`,
         status: PracticeSheetStatus.ready,
       },
     });
+  }
+
+  async getPracticeSheetDownload(user: AuthenticatedUser, id: string) {
+    const sheet = await this.prisma.practiceSheet.findFirst({
+      where: {
+        id,
+        student: this.accessService.buildStudentScopeWhere(user),
+      },
+      include: { student: { select: { name: true } } },
+    });
+    if (!sheet || !sheet.fileUrl?.startsWith("local://")) {
+      throw new NotFoundException("Practice sheet not found");
+    }
+
+    const path = sheet.fileUrl.slice("local://".length);
+    await access(path);
+    return {
+      path,
+      filename: `${sheet.title ?? `${sheet.student.name}错题练习单`}.docx`,
+    };
+  }
+
+  private async writePracticeSheetDocx(
+    studentId: string,
+    title: string,
+    questions: Array<{
+      question: string;
+      answer: string | null;
+      explanation: string | null;
+      mistakeItem: { subject: string | null; knowledgePoint: string | null };
+    }>,
+  ) {
+    const dir = join(process.cwd(), "..", "..", "storage", "practice-sheets", studentId);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    const path = join(dir, `${Date.now()}.docx`);
+
+    const children = [
+      new Paragraph({
+        children: [new TextRun({ text: title, bold: true, size: 32 })],
+        spacing: { after: 300 },
+      }),
+      ...questions.flatMap((item, index) => [
+        new Paragraph({
+          children: [new TextRun({ text: `${index + 1}. ${item.question}`, bold: true })],
+          spacing: { after: 160 },
+        }),
+        new Paragraph(`科目：${item.mistakeItem.subject ?? "未填"}    知识点：${item.mistakeItem.knowledgePoint ?? "待确认"}`),
+        new Paragraph(`答案：${item.answer ?? "待老师补充"}`),
+        new Paragraph({ text: `解析：${item.explanation ?? "待老师补充"}`, spacing: { after: 260 } }),
+      ]),
+    ];
+
+    const doc = new Document({ sections: [{ children }] });
+    const buffer = await Packer.toBuffer(doc);
+    await import("node:fs/promises").then((fs) => fs.writeFile(path, buffer));
+    return path;
   }
 
   private async findAccessibleMistake(user: AuthenticatedUser, id: string) {

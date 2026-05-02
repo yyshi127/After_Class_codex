@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/types";
@@ -64,5 +65,13 @@ export class HomeworkController {
   @Post("practice-sheets")
   generatePracticeSheet(@CurrentUser() user: AuthenticatedUser, @Body() dto: GeneratePracticeSheetDto) {
     return this.homeworkService.generatePracticeSheet(user, dto);
+  }
+
+  @Get("practice-sheets/:id/download")
+  async downloadPracticeSheet(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Res() response: Response) {
+    const file = await this.homeworkService.getPracticeSheetDownload(user, id);
+    response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    response.setHeader("Content-Disposition", `attachment; filename=\"${encodeURIComponent(file.filename)}\"`);
+    return response.sendFile(file.path);
   }
 }
