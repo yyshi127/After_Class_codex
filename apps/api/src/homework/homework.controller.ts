@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/types";
@@ -6,6 +6,8 @@ import { CreateHomeworkReviewDto } from "./dto/create-homework-review.dto";
 import { PublishFeedbackDto } from "./dto/publish-feedback.dto";
 import { PublishHomeworkReviewDto } from "./dto/publish-homework-review.dto";
 import { HomeworkService } from "./homework.service";
+import { UpdateMistakeStatusDto } from "./dto/update-mistake-status.dto";
+import { GenerateSimilarQuestionsDto } from "./dto/generate-similar-questions.dto";
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -35,5 +37,20 @@ export class HomeworkController {
   @Post("feedback")
   publishFeedback(@CurrentUser() user: AuthenticatedUser, @Body() dto: PublishFeedbackDto) {
     return this.homeworkService.publishFeedback(user, dto);
+  }
+
+  @Get("mistakes")
+  listMistakes(@CurrentUser() user: AuthenticatedUser, @Query("campusId") campusId?: string, @Query("studentId") studentId?: string) {
+    return this.homeworkService.listMistakes(user, campusId, studentId);
+  }
+
+  @Patch("mistakes/:id/status")
+  updateMistakeStatus(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateMistakeStatusDto) {
+    return this.homeworkService.updateMistakeStatus(user, id, dto);
+  }
+
+  @Post("mistakes/:id/similar-questions")
+  generateSimilarQuestions(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: GenerateSimilarQuestionsDto) {
+    return this.homeworkService.generateSimilarQuestions(user, id, dto);
   }
 }

@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, UserRole } from "@prisma/client";
+import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, SimilarQuestionStatus, UserRole } from "@prisma/client";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -7,6 +7,8 @@ import { CreateHomeworkReviewDto } from "./dto/create-homework-review.dto";
 import { PublishFeedbackDto } from "./dto/publish-feedback.dto";
 import { PublishHomeworkReviewDto } from "./dto/publish-homework-review.dto";
 import { NotificationsService } from "../notifications/notifications.service";
+import { UpdateMistakeStatusDto } from "./dto/update-mistake-status.dto";
+import { GenerateSimilarQuestionsDto } from "./dto/generate-similar-questions.dto";
 
 @Injectable()
 export class HomeworkService {
@@ -149,6 +151,68 @@ export class HomeworkService {
     });
 
     return feedback;
+  }
+
+  listMistakes(user: AuthenticatedUser, campusId?: string, studentId?: string) {
+    return this.prisma.mistakeBookItem.findMany({
+      where: {
+        student: this.accessService.buildStudentScopeWhere(user, { campusId, studentId }),
+      },
+      include: {
+        student: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
+        review: { select: { id: true, subject: true, createdAt: true } },
+        similarQuestions: { orderBy: { createdAt: "desc" } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+  }
+
+  async updateMistakeStatus(user: AuthenticatedUser, id: string, dto: UpdateMistakeStatusDto) {
+    this.assertTeacherLike(user);
+    const mistake = await this.findAccessibleMistake(user, id);
+    return this.prisma.mistakeBookItem.update({
+      where: { id: mistake.id },
+      data: {
+        status: dto.status,
+        knowledgePoint: dto.knowledgePoint ?? mistake.knowledgePoint,
+      },
+      include: { similarQuestions: true },
+    });
+  }
+
+  async generateSimilarQuestions(user: AuthenticatedUser, id: string, dto: GenerateSimilarQuestionsDto) {
+    this.assertTeacherLike(user);
+    const mistake = await this.findAccessibleMistake(user, id);
+    const count = dto.count ?? 3;
+    const questions = Array.from({ length: count }, (_, index) => ({
+      campusId: mistake.campusId,
+      studentId: mistake.studentId,
+      mistakeItemId: mistake.id,
+      question: `同类练习 ${index + 1}：围绕「${mistake.knowledgePoint ?? "待确认知识点"}」设计的巩固题。`,
+      answer: "参考答案待老师确认",
+      explanation: "该题由 MVP mock 生成，正式版将接入 AI 生成题干、答案和解析。",
+      status: SimilarQuestionStatus.candidate,
+    }));
+
+    await this.prisma.mistakeSimilarQuestion.createMany({ data: questions });
+    return this.prisma.mistakeBookItem.findUnique({
+      where: { id: mistake.id },
+      include: { similarQuestions: { orderBy: { createdAt: "desc" } } },
+    });
+  }
+
+  private async findAccessibleMistake(user: AuthenticatedUser, id: string) {
+    const mistake = await this.prisma.mistakeBookItem.findFirst({
+      where: {
+        id,
+        student: this.accessService.buildStudentScopeWhere(user),
+      },
+    });
+    if (!mistake) {
+      throw new NotFoundException("Mistake item not found");
+    }
+    return mistake;
   }
 
   private assertTeacherLike(user: AuthenticatedUser) {
