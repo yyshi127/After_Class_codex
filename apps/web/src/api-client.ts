@@ -25,9 +25,26 @@ export type StudentItem = {
   status: string;
   idCardNoMasked: string | null;
   idCardNoFull?: string | null;
+  currentService?: {
+    id: string;
+    billingCycle: "monthly" | "semester";
+    validFrom: string;
+    validTo: string;
+    serviceType: {
+      id: string;
+      code: string;
+      name: string;
+      includesPickup: boolean;
+      includesMeal: boolean;
+      includesRest: boolean;
+      includesHomeworkHelp: boolean;
+    };
+  } | null;
   campus?: CampusOption;
   class?: { id: string; name: string } | null;
 };
+
+export type StudentServiceItem = NonNullable<StudentItem["currentService"]>;
 
 export type StudentAttendanceItem = {
   id: string;
@@ -492,6 +509,16 @@ export function listClassSettlements(params: { campusId?: string; classId?: stri
 
 export function generateClassSettlement(payload: { campusId: string; classId: string; periodStart: string; periodEnd: string }) {
   return apiRequest<ClassSettlementItem>("/finance/class-settlements/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function configureStudentService(
+  id: string,
+  payload: { serviceTypeCode: string; billingCycle: "monthly" | "semester"; validFrom: string; validTo: string },
+) {
+  return apiRequest<StudentServiceItem>(`/students/${id}/service`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

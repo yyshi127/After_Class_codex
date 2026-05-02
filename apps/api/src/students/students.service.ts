@@ -6,6 +6,7 @@ import { AccessService } from "../access/access.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { UpdateStudentDto } from "./dto/update-student.dto";
+import { UpsertStudentServiceDto } from "./dto/upsert-student-service.dto";
 
 @Injectable()
 export class StudentsService {
@@ -33,17 +34,39 @@ export class StudentsService {
         createdAt: true,
         campus: { select: { id: true, name: true } },
         class: { select: { id: true, name: true } },
+        services: {
+          orderBy: { validTo: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            billingCycle: true,
+            validFrom: true,
+            validTo: true,
+            serviceType: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                includesPickup: true,
+                includesMeal: true,
+                includesRest: true,
+                includesHomeworkHelp: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
 
-    return students.map(({ idCardNoEncrypted, ...student }) => {
+    return students.map(({ idCardNoEncrypted, services, ...student }) => {
       const idCardNo = decryptIdCard(idCardNoEncrypted);
       return {
         ...student,
         idCardNoMasked: maskIdCard(idCardNo),
         idCardNoFull: user.role === UserRole.admin ? idCardNo : undefined,
+        currentService: services[0] ?? null,
       };
     });
   }
@@ -171,6 +194,29 @@ export class StudentsService {
       idCardNoFull: idCardNo,
       idCardNoMasked: maskIdCard(idCardNo),
     };
+  }
+
+  async upsertService(user: AuthenticatedUser, id: string, dto: UpsertStudentServiceDto) {
+    const student = await this.accessService.findAccessibleStudent(user, id);
+    await this.assertTeacherClassWritable(user, student.classId ?? undefined, student.campusId);
+
+    const serviceType = await this.prisma.serviceType.findUnique({
+      where: { code: dto.serviceTypeCode },
+    });
+    if (!serviceType) {
+      throw new NotFoundException("Service type not found");
+    }
+
+    return this.prisma.studentService.create({
+      data: {
+        studentId: student.id,
+        serviceTypeId: serviceType.id,
+        billingCycle: dto.billingCycle,
+        validFrom: new Date(dto.validFrom),
+        validTo: new Date(dto.validTo),
+      },
+      include: { serviceType: true },
+    });
   }
 
   private async assertTeacherClassWritable(user: AuthenticatedUser, classId: string | undefined, campusId: string) {

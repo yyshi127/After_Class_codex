@@ -7,6 +7,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import type { AuthenticatedUser } from "../auth/types";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { UpdateStudentDto } from "./dto/update-student.dto";
+import { UpsertStudentServiceDto } from "./dto/upsert-student-service.dto";
 import { StudentsService } from "./students.service";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -40,5 +41,11 @@ export class StudentsController {
   @Patch(":id")
   update(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateStudentDto) {
     return this.studentsService.update(user, id, dto);
+  }
+
+  @Roles(UserRole.admin)
+  @Post(":id/service")
+  upsertService(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpsertStudentServiceDto) {
+    return this.studentsService.upsertService(user, id, dto);
   }
 }
