@@ -6,12 +6,14 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateHomeworkReviewDto } from "./dto/create-homework-review.dto";
 import { PublishFeedbackDto } from "./dto/publish-feedback.dto";
 import { PublishHomeworkReviewDto } from "./dto/publish-homework-review.dto";
+import { NotificationsService } from "../notifications/notifications.service";
 
 @Injectable()
 export class HomeworkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessService: AccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   listReviews(user: AuthenticatedUser, campusId?: string, studentId?: string) {
@@ -65,7 +67,7 @@ export class HomeworkService {
     });
     if (!review) throw new NotFoundException("Homework review not found");
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       if (dto.reviewedImageUrl) {
         await tx.homeworkReviewImage.create({
           data: {
@@ -99,6 +101,14 @@ export class HomeworkService {
         include: { images: true, mistakes: true },
       });
     });
+
+    await this.notificationsService.createForStudentGuardians({
+      studentId: review.studentId,
+      title: "作业批改已更新",
+      content: "老师已发布新的作业批改反馈，可查看作业原图和批改图片。",
+    });
+
+    return updated;
   }
 
   listFeedback(user: AuthenticatedUser, campusId?: string, studentId?: string) {
@@ -119,7 +129,7 @@ export class HomeworkService {
     this.assertTeacherLike(user);
     const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
 
-    return this.prisma.feedback.create({
+    const feedback = await this.prisma.feedback.create({
       data: {
         campusId: student.campusId,
         studentId: student.id,
@@ -131,6 +141,14 @@ export class HomeworkService {
         publishedAt: new Date(),
       },
     });
+
+    await this.notificationsService.createForStudentGuardians({
+      studentId: student.id,
+      title: "今日点评已发布",
+      content: "老师已发布行为表现、作业完成、知识掌握三类今日点评。",
+    });
+
+    return feedback;
   }
 
   private assertTeacherLike(user: AuthenticatedUser) {

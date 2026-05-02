@@ -6,11 +6,13 @@ import { BookOpenCheck, CalendarCheck2, Home, Image as ImageIcon, LogOut, Messag
 import {
   FeedbackItem,
   HomeworkReviewItem,
+  NotificationItem,
   StudentAttendanceItem,
   StudentItem,
   getFileSignedUrl,
   listFeedback,
   listHomeworkReviews,
+  listNotifications,
   listStudentAttendance,
   listStudents,
 } from "../../../src/api-client";
@@ -38,6 +40,7 @@ export default function ParentHomePage() {
   const [attendanceRows, setAttendanceRows] = useState<StudentAttendanceItem[]>([]);
   const [reviews, setReviews] = useState<HomeworkReviewItem[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<FeedbackItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -101,9 +104,11 @@ export default function ParentHomePage() {
         listHomeworkReviews({ campusId, studentId }),
         listFeedback({ campusId, studentId }),
       ]);
+      const notificationList = await listNotifications({ campusId, studentId });
       setAttendanceRows(attendanceList);
       setReviews(reviewList);
       setFeedbackRows(feedbackList);
+      setNotifications(notificationList);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -208,6 +213,23 @@ export default function ParentHomePage() {
             ) : (
               <div className="mt-4 rounded-3xl bg-serenity-bg p-6 text-center text-sm text-serenity-muted shadow-insetSoft">老师发布后可查看三类反馈</div>
             )}
+          </article>
+
+          <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+            <div className="flex items-center gap-3">
+              <MessageCircle className="h-5 w-5 text-serenity-blue" />
+              <h2 className="text-lg font-semibold">消息通知</h2>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {notifications.slice(0, 5).map((item) => (
+                <div key={item.id} className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft">
+                  <div className="font-semibold">{item.title}</div>
+                  <div className="mt-2 text-sm leading-6 text-serenity-muted">{item.content}</div>
+                  <div className="mt-2 text-xs text-serenity-muted">{new Date(item.createdAt).toLocaleString("zh-CN")}</div>
+                </div>
+              ))}
+              {!notifications.length ? <div className="rounded-3xl bg-serenity-bg p-6 text-center text-sm text-serenity-muted shadow-insetSoft">暂无新消息</div> : null}
+            </div>
           </article>
 
           <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">

@@ -105,6 +105,20 @@ export type UploadedFileObject = {
   signedUrl: string;
 };
 
+export type NotificationItem = {
+  id: string;
+  campusId: string | null;
+  studentId: string | null;
+  guardianId: string | null;
+  recipientUserId: string | null;
+  title: string;
+  content: string;
+  status: "pending" | "sent" | "failed";
+  sentAt: string | null;
+  failReason: string | null;
+  createdAt: string;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -279,4 +293,12 @@ export async function uploadImage(payload: {
 
 export async function getFileSignedUrl(id: string) {
   return apiRequest<{ id: string; signedUrl: string; expiresIn: number }>(`/files/${id}/signed-url`);
+}
+
+export function listNotifications(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<NotificationItem[]>(`/notifications${query ? `?${query}` : ""}`);
 }

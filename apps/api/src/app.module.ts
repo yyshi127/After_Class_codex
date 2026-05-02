@@ -9,6 +9,7 @@ import { ClassesModule } from "./classes/classes.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { HomeworkModule } from "./homework/homework.module";
 import { FilesModule } from "./files/files.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { FilesModule } from "./files/files.module";
     AttendanceModule,
     HomeworkModule,
     FilesModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
 })
