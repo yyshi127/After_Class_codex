@@ -12,6 +12,13 @@ const statusLabels: Record<string, string> = {
   paused: "停读",
 };
 
+const serviceTypeCards = [
+  { name: "中午托", description: "包含接送、午餐和午休。", tags: ["接送", "午餐", "午休"], mutedTags: ["作业辅导"] },
+  { name: "下午托", description: "包含接放学和就餐。", tags: ["接放学", "就餐"], mutedTags: ["午休", "作业辅导"] },
+  { name: "晚辅导", description: "不接、不吃，仅辅导作业。", tags: ["作业辅导"], mutedTags: ["接送", "就餐", "午休"] },
+  { name: "晚全托", description: "下午托加晚辅导，包含接放学、就餐和作业辅导。", tags: ["接放学", "就餐", "作业辅导"], mutedTags: ["午休"] },
+];
+
 export default function AdminStudentsPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -187,6 +194,34 @@ export default function AdminStudentsPage() {
                 </label>
               </div>
             </div>
+
+            <section className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+              <div className="flex items-center gap-3">
+                <School className="h-5 w-5 text-serenity-blue" />
+                <h2 className="text-xl font-semibold">托管类型服务边界</h2>
+              </div>
+              <p className="mt-2 text-sm text-serenity-muted">托管类型会影响考勤口径、收费周期、老师工作台提示和家长端服务说明。</p>
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {serviceTypeCards.map((item) => (
+                  <article key={item.name} className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft">
+                    <div className="font-semibold">{item.name}</div>
+                    <p className="mt-2 min-h-12 text-sm leading-6 text-serenity-muted">{item.description}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.tags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-serenity-blue px-3 py-1 text-xs font-semibold text-white">
+                          {tag}
+                        </span>
+                      ))}
+                      {item.mutedTags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">
+                          不含{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
 
             <section className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
               <div className="flex items-center justify-between">
