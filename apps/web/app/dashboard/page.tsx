@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BookOpenCheck, CalendarCheck2, ClipboardCheck, CreditCard, Home, LogOut, School, ShieldCheck, UserRound, Users } from "lucide-react";
+import { BookOpenCheck, CalendarCheck2, ClipboardCheck, CreditCard, GraduationCap, Home, LogOut, School, ShieldCheck, UserRound, Users } from "lucide-react";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../src/auth-client";
 
 const roleLabels: Record<AuthUser["role"], string> = {
@@ -40,6 +40,7 @@ const navItems = [
   { icon: BookOpenCheck, label: "作业反馈", href: "/teacher/homework" },
   { icon: CreditCard, label: "财务核算", href: "/admin/finance" },
   { icon: UserRound, label: "家长端", href: "/parent/home" },
+  { icon: GraduationCap, label: "学生端", href: "/student/home" },
   { icon: ShieldCheck, label: "权限审计", href: "/dashboard" },
 ];
 
