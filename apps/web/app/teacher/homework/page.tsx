@@ -8,6 +8,7 @@ import {
   BookOpenCheck,
   Camera,
   CheckCircle2,
+  Download,
   FileText,
   Image as ImageIcon,
   LogOut,
@@ -19,17 +20,22 @@ import {
   FeedbackItem,
   HomeworkReviewItem,
   MistakeItem,
+  PracticeSheetItem,
   StudentItem,
   createHomeworkReview,
+  downloadPracticeSheet,
+  generatePracticeSheet,
   generateSimilarQuestions,
   listClasses,
   listFeedback,
   listHomeworkReviews,
   listMistakes,
+  listPracticeSheets,
   listStudents,
   publishFeedback,
   publishHomeworkReview,
   updateMistakeStatus,
+  updateSimilarQuestionStatus,
   uploadImage,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
@@ -48,6 +54,7 @@ export default function TeacherHomeworkPage() {
   const [reviews, setReviews] = useState<HomeworkReviewItem[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<FeedbackItem[]>([]);
   const [mistakes, setMistakes] = useState<MistakeItem[]>([]);
+  const [practiceSheets, setPracticeSheets] = useState<PracticeSheetItem[]>([]);
   const [campusId, setCampusId] = useState("");
   const [classId, setClassId] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -116,13 +123,15 @@ export default function TeacherHomeworkPage() {
       const activeStudentId = selectedStudentId || studentRows[0]?.id || "";
       if (!studentId && activeStudentId) setStudentId(activeStudentId);
 
-      const [reviewRows, feedbackList] = await Promise.all([
+      const [reviewRows, feedbackList, sheetRows] = await Promise.all([
         listHomeworkReviews({ campusId: selectedCampusId, studentId: activeStudentId || undefined }),
         listFeedback({ campusId: selectedCampusId, studentId: activeStudentId || undefined }),
+        listPracticeSheets({ campusId: selectedCampusId, studentId: activeStudentId || undefined }),
       ]);
       const mistakeRows = activeStudentId ? await listMistakes({ campusId: selectedCampusId, studentId: activeStudentId }) : [];
       setReviews(reviewRows);
       setFeedbackRows(feedbackList);
+      setPracticeSheets(sheetRows);
       setMistakes(mistakeRows);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
@@ -189,6 +198,44 @@ export default function TeacherHomeworkPage() {
     await generateSimilarQuestions(mistake.id, 3);
     setMessage("已生成同类题候选");
     await reload();
+  }
+
+  async function onSelectSimilarQuestion(questionId: string) {
+    await updateSimilarQuestionStatus(questionId, "selected");
+    setMessage("同类题已选入练习单");
+    await reload();
+  }
+
+  async function onDismissSimilarQuestion(questionId: string) {
+    await updateSimilarQuestionStatus(questionId, "dismissed");
+    setMessage("已移除不合适的同类题");
+    await reload();
+  }
+
+  async function onGeneratePracticeSheet() {
+    const selectedIds = mistakes.flatMap((item) => item.similarQuestions?.filter((question) => question.status === "selected").map((question) => question.id) ?? []);
+    if (!selectedStudentId || selectedIds.length === 0) {
+      setMessage("请先选择同类题");
+      return;
+    }
+    const sheet = await generatePracticeSheet({
+      studentId: selectedStudentId,
+      title: "错题巩固练习单",
+      similarQuestionIds: selectedIds,
+    });
+    setMessage(`练习单已生成：${sheet.title ?? sheet.id}`);
+    await reload();
+  }
+
+  async function onDownloadPracticeSheet(sheet: PracticeSheetItem) {
+    const { blob, filename } = await downloadPracticeSheet(sheet.id);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage(`已下载：${filename}`);
   }
 
   function logout() {
@@ -352,6 +399,21 @@ export default function TeacherHomeworkPage() {
 
             <section className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
               <h2 className="text-xl font-semibold">错题候选</h2>
+              <button onClick={() => void onGeneratePracticeSheet()} className="mt-4 w-full rounded-2xl bg-serenity-blue px-4 py-3 text-sm font-semibold text-white shadow-neumorphic">
+                生成练习单
+              </button>
+              <div className="mt-4 grid gap-2">
+                {practiceSheets.slice(0, 3).map((sheet) => (
+                  <article key={sheet.id} className="rounded-2xl bg-white/70 p-3 text-sm text-serenity-muted">
+                    <div className="font-semibold text-serenity-ink">{sheet.title ?? "错题练习单"}</div>
+                    <div className="mt-1 text-xs">{new Date(sheet.createdAt).toLocaleString("zh-CN")} · {sheet.status === "ready" ? "可下载" : sheet.status}</div>
+                    <button onClick={() => void onDownloadPracticeSheet(sheet)} disabled={sheet.status !== "ready"} className="mt-2 inline-flex items-center gap-2 rounded-xl bg-serenity-bg px-3 py-2 text-xs font-semibold text-serenity-ink shadow-insetSoft disabled:text-serenity-muted">
+                      <Download className="h-3.5 w-3.5" />
+                      下载 Word
+                    </button>
+                  </article>
+                ))}
+              </div>
               <div className="mt-5 grid gap-3">
                 {mistakes.slice(0, 6).map((item) => (
                   <article key={item.id} className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
@@ -365,6 +427,21 @@ export default function TeacherHomeworkPage() {
                       <button onClick={() => void onConfirmMistake(item)} className="rounded-2xl bg-serenity-blue px-3 py-2 text-xs font-semibold text-white">确认错题</button>
                       <button onClick={() => void onGenerateSimilar(item)} className="rounded-2xl bg-white/70 px-3 py-2 text-xs font-semibold text-serenity-ink">生成同类题</button>
                     </div>
+                    {item.similarQuestions?.length ? (
+                      <div className="mt-3 grid gap-2">
+                        {item.similarQuestions.slice(0, 3).map((question) => (
+                          <div key={question.id} className="rounded-2xl bg-white/70 p-3">
+                            <div>{question.question}</div>
+                            <button onClick={() => void onSelectSimilarQuestion(question.id)} className="mt-2 rounded-xl bg-serenity-bg px-3 py-1 text-xs font-semibold text-serenity-ink shadow-insetSoft">
+                              {question.status === "selected" ? "已选择" : "选择"}
+                            </button>
+                            <button onClick={() => void onDismissSimilarQuestion(question.id)} className="ml-2 mt-2 rounded-xl bg-white px-3 py-1 text-xs font-semibold text-serenity-muted shadow-insetSoft">
+                              移除
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
                 {!mistakes.length ? <div className="rounded-3xl bg-serenity-bg p-6 text-center text-sm text-serenity-muted shadow-insetSoft">暂无错题候选</div> : null}

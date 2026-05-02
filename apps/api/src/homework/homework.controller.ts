@@ -67,6 +67,11 @@ export class HomeworkController {
     return this.homeworkService.generatePracticeSheet(user, dto);
   }
 
+  @Get("practice-sheets")
+  listPracticeSheets(@CurrentUser() user: AuthenticatedUser, @Query("campusId") campusId?: string, @Query("studentId") studentId?: string) {
+    return this.homeworkService.listPracticeSheets(user, campusId, studentId);
+  }
+
   @Get("practice-sheets/:id/download")
   async downloadPracticeSheet(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Res() response: Response) {
     const file = await this.homeworkService.getPracticeSheetDownload(user, id);

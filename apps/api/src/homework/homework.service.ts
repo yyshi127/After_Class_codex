@@ -3,7 +3,7 @@ import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, Pract
 import { existsSync, mkdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { Document, Packer, Paragraph, TextRun } from "docx";
+import { Document, Packer, PageBreak, Paragraph, TextRun } from "docx";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -259,7 +259,23 @@ export class HomeworkService {
     });
   }
 
+  listPracticeSheets(user: AuthenticatedUser, campusId?: string, studentId?: string) {
+    this.assertTeacherLike(user);
+    return this.prisma.practiceSheet.findMany({
+      where: {
+        student: this.accessService.buildStudentScopeWhere(user, { campusId, studentId }),
+      },
+      include: {
+        student: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
+        teacher: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+  }
+
   async getPracticeSheetDownload(user: AuthenticatedUser, id: string) {
+    this.assertTeacherLike(user);
     const sheet = await this.prisma.practiceSheet.findFirst({
       where: {
         id,
@@ -295,7 +311,7 @@ export class HomeworkService {
     }
     const path = join(dir, `${Date.now()}.docx`);
 
-    const children = [
+    const questionSection = [
       new Paragraph({
         children: [new TextRun({ text: title, bold: true, size: 32 })],
         spacing: { after: 300 },
@@ -306,12 +322,28 @@ export class HomeworkService {
           spacing: { after: 160 },
         }),
         new Paragraph(`科目：${item.mistakeItem.subject ?? "未填"}    知识点：${item.mistakeItem.knowledgePoint ?? "待确认"}`),
+        new Paragraph({ text: "答题区：", spacing: { after: 260 } }),
+        new Paragraph(""),
+        new Paragraph(""),
+      ]),
+    ];
+
+    const answerSection = [
+      new Paragraph({
+        children: [new PageBreak(), new TextRun({ text: "答案与解析", bold: true, size: 28 })],
+        spacing: { after: 300 },
+      }),
+      ...questions.flatMap((item, index) => [
+        new Paragraph({
+          children: [new TextRun({ text: `${index + 1}. ${item.question}`, bold: true })],
+          spacing: { after: 120 },
+        }),
         new Paragraph(`答案：${item.answer ?? "待老师补充"}`),
         new Paragraph({ text: `解析：${item.explanation ?? "待老师补充"}`, spacing: { after: 260 } }),
       ]),
     ];
 
-    const doc = new Document({ sections: [{ children }] });
+    const doc = new Document({ sections: [{ children: [...questionSection, ...answerSection] }] });
     const buffer = await Packer.toBuffer(doc);
     await import("node:fs/promises").then((fs) => fs.writeFile(path, buffer));
     return path;

@@ -185,6 +185,20 @@ export type MistakeItem = {
   }>;
 };
 
+export type PracticeSheetItem = {
+  id: string;
+  campusId: string;
+  studentId: string;
+  teacherId: string;
+  title: string | null;
+  fileUrl: string | null;
+  status: "generating" | "ready" | "failed";
+  errorReason: string | null;
+  createdAt: string;
+  student?: { id: string; name: string; class?: { id: string; name: string } | null };
+  teacher?: { id: string; name: string };
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -435,4 +449,51 @@ export function generateSimilarQuestions(id: string, count = 3) {
     method: "POST",
     body: JSON.stringify({ count }),
   });
+}
+
+export function updateSimilarQuestionStatus(id: string, status: "candidate" | "selected" | "dismissed") {
+  return apiRequest(`/similar-questions/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+export function generatePracticeSheet(payload: { studentId: string; title?: string; similarQuestionIds: string[] }) {
+  return apiRequest<PracticeSheetItem>("/practice-sheets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listPracticeSheets(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<PracticeSheetItem[]>(`/practice-sheets${query ? `?${query}` : ""}`);
+}
+
+export async function downloadPracticeSheet(id: string) {
+  const token = getStoredToken();
+  const response = await fetch(`${getApiBaseUrl()}/practice-sheets/${id}/download`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (response.status === 401) {
+    clearSession();
+    throw new Error("登录状态已失效");
+  }
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+  return {
+    blob: await response.blob(),
+    filename: filenameMatch?.[1] ? decodeURIComponent(filenameMatch[1]) : "错题练习单.docx",
+  };
 }
