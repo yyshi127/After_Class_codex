@@ -245,18 +245,31 @@ export class HomeworkService {
     }
 
     const title = dto.title ?? `${student.name} 错题练习单`;
-    const filePath = await this.writePracticeSheetDocx(student.id, title, selectedQuestions);
+    try {
+      const filePath = await this.writePracticeSheetDocx(student.id, title, selectedQuestions);
 
-    return this.prisma.practiceSheet.create({
-      data: {
-        campusId: student.campusId,
-        studentId: student.id,
-        teacherId: user.id,
-        title,
-        fileUrl: `local://${filePath}`,
-        status: PracticeSheetStatus.ready,
-      },
-    });
+      return this.prisma.practiceSheet.create({
+        data: {
+          campusId: student.campusId,
+          studentId: student.id,
+          teacherId: user.id,
+          title,
+          fileUrl: `local://${filePath}`,
+          status: PracticeSheetStatus.ready,
+        },
+      });
+    } catch (error) {
+      return this.prisma.practiceSheet.create({
+        data: {
+          campusId: student.campusId,
+          studentId: student.id,
+          teacherId: user.id,
+          title,
+          status: PracticeSheetStatus.failed,
+          errorReason: error instanceof Error ? error.message.slice(0, 500) : "练习单生成失败",
+        },
+      });
+    }
   }
 
   listPracticeSheets(user: AuthenticatedUser, campusId?: string, studentId?: string) {
