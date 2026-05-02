@@ -171,6 +171,26 @@ export default function ParentHomePage() {
                 {latestAttendance ? new Date(latestAttendance.occurredAt).toLocaleString("zh-CN") : "老师签到后会自动同步到这里"}
               </div>
             </div>
+            <div className="mt-4 grid gap-3">
+              {attendanceRows.slice(0, 8).map((item) => (
+                <div key={item.id} className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{attendanceLabels[item.status] ?? item.status}</span>
+                    <span className="text-xs text-serenity-muted">{new Date(item.occurredAt).toLocaleString("zh-CN")}</span>
+                  </div>
+                  {item.photoUrl ? (
+                    <div className="mt-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs text-serenity-muted">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        到托照片
+                      </div>
+                      <AttendancePhoto url={item.photoUrl} />
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {!attendanceRows.length ? <div className="rounded-3xl bg-serenity-bg p-6 text-center text-sm text-serenity-muted shadow-insetSoft">暂无考勤记录</div> : null}
+            </div>
           </article>
 
           <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
@@ -305,5 +325,33 @@ function HomeworkImage({ url }: { url: string }) {
       alt="作业图片"
       className="mt-3 aspect-[4/3] w-full rounded-2xl object-cover shadow-insetSoft"
     />
+  );
+}
+
+function AttendancePhoto({ url }: { url: string }) {
+  const [resolvedUrl, setResolvedUrl] = useState(url);
+
+  useEffect(() => {
+    if (!url.startsWith("file:")) {
+      setResolvedUrl(url);
+      return;
+    }
+    getFileSignedUrl(url.slice("file:".length))
+      .then((result) => setResolvedUrl(result.signedUrl))
+      .catch(() => setResolvedUrl(""));
+  }, [url]);
+
+  if (!resolvedUrl) {
+    return <div className="rounded-2xl bg-white/70 p-3 text-xs text-serenity-muted">照片暂时无法访问</div>;
+  }
+
+  if (!resolvedUrl.startsWith("http")) {
+    return <div className="rounded-2xl bg-white/70 p-3 text-xs text-serenity-muted break-all">{resolvedUrl}</div>;
+  }
+
+  return (
+    <a href={resolvedUrl} target="_blank" rel="noreferrer" className="block">
+      <img src={resolvedUrl} alt="到托照片" className="aspect-[4/3] w-full rounded-2xl object-cover shadow-insetSoft" />
+    </a>
   );
 }
