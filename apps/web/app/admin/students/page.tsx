@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Building2, Plus, RefreshCcw, School, UserRoundPlus, Users } from "lucide-react";
-import { ClassItem, StudentItem, createClass, createStudent, listClasses, listStudents } from "../../../src/api-client";
+import { ClassItem, StudentItem, createClass, createStudent, getStudentIdCardDetail, listClasses, listStudents } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
 
 const statusLabels: Record<string, string> = {
@@ -29,6 +29,8 @@ export default function AdminStudentsPage() {
   const [status, setStatus] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [idCardDetails, setIdCardDetails] = useState<Record<string, string | null>>({});
+  const [idCardLoadingStudentId, setIdCardLoadingStudentId] = useState("");
   const [studentForm, setStudentForm] = useState({
     name: "",
     gender: "男",
@@ -41,6 +43,7 @@ export default function AdminStudentsPage() {
 
   const campuses = useMemo(() => user?.campuses ?? [], [user]);
   const selectedCampusId = campusId || campuses[0]?.id || "";
+  const canRevealIdCard = user?.role === "teacher";
 
   useEffect(() => {
     const token = getStoredToken();
@@ -118,6 +121,21 @@ export default function AdminStudentsPage() {
     setClassName("");
     setMessage("班级已新增");
     await reload();
+  }
+
+  async function onRevealIdCard(student: StudentItem) {
+    if (idCardDetails[student.id] || idCardLoadingStudentId) return;
+    setIdCardLoadingStudentId(student.id);
+    setMessage("");
+    try {
+      const detail = await getStudentIdCardDetail(student.id);
+      setIdCardDetails((prev) => ({ ...prev, [student.id]: detail.idCardNoFull }));
+      setMessage(`已记录完整身份证号查看审计：${student.name}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "查看完整身份证号失败");
+    } finally {
+      setIdCardLoadingStudentId("");
+    }
   }
 
   return (
@@ -250,7 +268,19 @@ export default function AdminStudentsPage() {
                     <span>{student.grade || "-"}</span>
                     <span>{student.class?.name || "未分班"}</span>
                     <span>{student.schoolName || "-"}</span>
-                    <span>{student.idCardNoMasked || "未录入"}</span>
+                    <span className="flex items-center gap-2">
+                      <span>{student.idCardNoFull || idCardDetails[student.id] || student.idCardNoMasked || "未录入"}</span>
+                      {canRevealIdCard && !idCardDetails[student.id] ? (
+                        <button
+                          type="button"
+                          onClick={() => void onRevealIdCard(student)}
+                          disabled={idCardLoadingStudentId === student.id}
+                          className="rounded-full bg-white/70 px-2 py-1 text-[11px] text-serenity-muted disabled:opacity-60"
+                        >
+                          {idCardLoadingStudentId === student.id ? "加载中" : "查看完整"}
+                        </button>
+                      ) : null}
+                    </span>
                     <span>{statusLabels[student.status] || student.status}</span>
                   </div>
                 ))}

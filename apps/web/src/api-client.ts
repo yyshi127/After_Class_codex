@@ -24,6 +24,7 @@ export type StudentItem = {
   schoolName: string | null;
   status: string;
   idCardNoMasked: string | null;
+  idCardNoFull?: string | null;
   campus?: CampusOption;
   class?: { id: string; name: string } | null;
 };
@@ -161,6 +162,13 @@ export type ClassSettlementItem = {
   status: "draft" | "confirmed";
   class?: { id: string; name: string };
   teacher?: { id: string; name: string } | null;
+};
+
+export type StudentIdCardDetail = {
+  studentId: string;
+  studentName: string;
+  idCardNoFull: string | null;
+  idCardNoMasked: string | null;
 };
 
 export type AdminDashboardData = {
@@ -487,6 +495,10 @@ export function generateClassSettlement(payload: { campusId: string; classId: st
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getStudentIdCardDetail(studentId: string) {
+  return apiRequest<StudentIdCardDetail>(`/students/${encodeURIComponent(studentId)}/id-card`);
 }
 
 export function getAdminDashboard() {

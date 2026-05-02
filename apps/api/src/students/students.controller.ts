@@ -24,6 +24,12 @@ export class StudentsController {
     return this.studentsService.list(user, campusId, classId, status);
   }
 
+  @Roles(UserRole.admin)
+  @Get(":id/id-card")
+  getIdCard(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string) {
+    return this.studentsService.getIdCard(user, id);
+  }
+
   @Roles(UserRole.admin, UserRole.teacher)
   @Post()
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateStudentDto) {

@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import type { AuthenticatedUser } from "../auth/types";
 import { AccessService } from "../access/access.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -37,10 +38,14 @@ export class StudentsService {
       take: 100,
     });
 
-    return students.map(({ idCardNoEncrypted, ...student }) => ({
-      ...student,
-      idCardNoMasked: maskIdCard(decryptDevIdCard(idCardNoEncrypted)),
-    }));
+    return students.map(({ idCardNoEncrypted, ...student }) => {
+      const idCardNo = decryptIdCard(idCardNoEncrypted);
+      return {
+        ...student,
+        idCardNoMasked: maskIdCard(idCardNo),
+        idCardNoFull: user.role === UserRole.admin ? idCardNo : undefined,
+      };
+    });
   }
 
   async create(user: AuthenticatedUser, dto: CreateStudentDto) {
@@ -55,7 +60,7 @@ export class StudentsService {
         gender: dto.gender,
         grade: dto.grade,
         schoolName: dto.schoolName,
-        idCardNoEncrypted: dto.idCardNo ? `dev-encrypted:${dto.idCardNo}` : undefined,
+        idCardNoEncrypted: dto.idCardNo ? encryptIdCard(dto.idCardNo) : undefined,
       },
       select: {
         id: true,
@@ -65,8 +70,16 @@ export class StudentsService {
         gender: true,
         grade: true,
         schoolName: true,
+        idCardNoEncrypted: true,
         status: true,
       },
+    }).then(({ idCardNoEncrypted, ...student }) => {
+      const idCardNo = decryptIdCard(idCardNoEncrypted);
+      return {
+        ...student,
+        idCardNoMasked: maskIdCard(idCardNo),
+        idCardNoFull: user.role === UserRole.admin ? idCardNo : undefined,
+      };
     });
   }
 
@@ -101,7 +114,7 @@ export class StudentsService {
         grade: dto.grade,
         schoolName: dto.schoolName,
         status: dto.status,
-        idCardNoEncrypted: dto.idCardNo ? `dev-encrypted:${dto.idCardNo}` : undefined,
+        idCardNoEncrypted: dto.idCardNo ? encryptIdCard(dto.idCardNo) : undefined,
       },
       select: {
         id: true,
@@ -111,9 +124,53 @@ export class StudentsService {
         gender: true,
         grade: true,
         schoolName: true,
+        idCardNoEncrypted: true,
         status: true,
       },
+    }).then(({ idCardNoEncrypted, ...student }) => {
+      const idCardNo = decryptIdCard(idCardNoEncrypted);
+      return {
+        ...student,
+        idCardNoMasked: maskIdCard(idCardNo),
+        idCardNoFull: user.role === UserRole.admin ? idCardNo : undefined,
+      };
     });
+  }
+
+  async getIdCard(user: AuthenticatedUser, id: string) {
+    const student = await this.prisma.student.findFirst({
+      where: this.accessService.buildStudentScopeWhere(user, { studentId: id }),
+      select: {
+        id: true,
+        campusId: true,
+        name: true,
+        idCardNoEncrypted: true,
+      },
+    });
+    if (!student) {
+      throw new NotFoundException("Student not found");
+    }
+
+    const idCardNo = decryptIdCard(student.idCardNoEncrypted);
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: student.campusId,
+        actorUserId: user.id,
+        action: "student.id_card_full_view",
+        targetType: "student",
+        targetId: student.id,
+        metadata: {
+          viewerRole: user.role,
+        },
+      },
+    });
+
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      idCardNoFull: idCardNo,
+      idCardNoMasked: maskIdCard(idCardNo),
+    };
   }
 
   private async assertTeacherClassWritable(user: AuthenticatedUser, classId: string | undefined, campusId: string) {
@@ -143,11 +200,42 @@ export class StudentsService {
   }
 }
 
-function decryptDevIdCard(value?: string | null) {
+function encryptIdCard(value: string) {
+  const key = getEncryptionKey();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `aes-256-gcm:v1:${iv.toString("base64")}:${tag.toString("base64")}:${encrypted.toString("base64")}`;
+}
+
+function decryptIdCard(value?: string | null) {
   if (!value) {
     return null;
   }
-  return value.startsWith("dev-encrypted:") ? value.slice("dev-encrypted:".length) : null;
+  if (value.startsWith("dev-encrypted:")) {
+    return value.slice("dev-encrypted:".length);
+  }
+  if (!value.startsWith("aes-256-gcm:v1:")) {
+    return null;
+  }
+
+  try {
+    const [, , ivText, tagText, encryptedText] = value.split(":");
+    const decipher = createDecipheriv("aes-256-gcm", getEncryptionKey(), Buffer.from(ivText, "base64"));
+    decipher.setAuthTag(Buffer.from(tagText, "base64"));
+    return Buffer.concat([decipher.update(Buffer.from(encryptedText, "base64")), decipher.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function getEncryptionKey() {
+  const rawKey = process.env.ENCRYPTION_KEY;
+  if (!rawKey && process.env.NODE_ENV === "production") {
+    throw new Error("ENCRYPTION_KEY is required in production");
+  }
+  return createHash("sha256").update(rawKey || "afterclass-development-only-encryption-key").digest();
 }
 
 function maskIdCard(value: string | null) {
