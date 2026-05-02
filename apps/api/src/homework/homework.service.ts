@@ -15,11 +15,10 @@ export class HomeworkService {
   ) {}
 
   listReviews(user: AuthenticatedUser, campusId?: string, studentId?: string) {
-    const campusIds = campusId ? [campusId] : user.campusIds;
-    if (campusId) this.accessService.assertCampusAccess(user, campusId);
-
     return this.prisma.homeworkReview.findMany({
-      where: { campusId: { in: campusIds }, studentId: studentId || undefined },
+      where: {
+        student: this.accessService.buildStudentScopeWhere(user, { campusId, studentId }),
+      },
       include: {
         student: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
         teacher: { select: { id: true, name: true } },
@@ -32,9 +31,7 @@ export class HomeworkService {
 
   async createReview(user: AuthenticatedUser, dto: CreateHomeworkReviewDto) {
     this.assertTeacherLike(user);
-    const student = await this.prisma.student.findUnique({ where: { id: dto.studentId } });
-    if (!student) throw new NotFoundException("Student not found");
-    this.accessService.assertCampusAccess(user, student.campusId);
+    const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
 
     return this.prisma.homeworkReview.create({
       data: {
@@ -60,9 +57,13 @@ export class HomeworkService {
 
   async publishReview(user: AuthenticatedUser, reviewId: string, dto: PublishHomeworkReviewDto) {
     this.assertTeacherLike(user);
-    const review = await this.prisma.homeworkReview.findUnique({ where: { id: reviewId } });
+    const review = await this.prisma.homeworkReview.findFirst({
+      where: {
+        id: reviewId,
+        student: this.accessService.buildStudentScopeWhere(user),
+      },
+    });
     if (!review) throw new NotFoundException("Homework review not found");
-    this.accessService.assertCampusAccess(user, review.campusId);
 
     return this.prisma.$transaction(async (tx) => {
       if (dto.reviewedImageUrl) {
@@ -101,10 +102,10 @@ export class HomeworkService {
   }
 
   listFeedback(user: AuthenticatedUser, campusId?: string, studentId?: string) {
-    const campusIds = campusId ? [campusId] : user.campusIds;
-    if (campusId) this.accessService.assertCampusAccess(user, campusId);
     return this.prisma.feedback.findMany({
-      where: { campusId: { in: campusIds }, studentId: studentId || undefined },
+      where: {
+        student: this.accessService.buildStudentScopeWhere(user, { campusId, studentId }),
+      },
       include: {
         student: { select: { id: true, name: true } },
         teacher: { select: { id: true, name: true } },
@@ -116,9 +117,7 @@ export class HomeworkService {
 
   async publishFeedback(user: AuthenticatedUser, dto: PublishFeedbackDto) {
     this.assertTeacherLike(user);
-    const student = await this.prisma.student.findUnique({ where: { id: dto.studentId } });
-    if (!student) throw new NotFoundException("Student not found");
-    this.accessService.assertCampusAccess(user, student.campusId);
+    const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
 
     return this.prisma.feedback.create({
       data: {

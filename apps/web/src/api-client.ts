@@ -51,6 +51,49 @@ export type TeacherAttendanceItem = {
   note: string | null;
 };
 
+export type HomeworkReviewItem = {
+  id: string;
+  campusId: string;
+  studentId: string;
+  teacherId: string;
+  classId: string | null;
+  subject: string | null;
+  status: "pending" | "completed" | "needs_correction";
+  teacherComment: string | null;
+  aiSummary: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  student?: {
+    id: string;
+    name: string;
+    class?: { id: string; name: string } | null;
+  };
+  teacher?: { id: string; name: string };
+  images?: Array<{
+    id: string;
+    reviewId: string;
+    type: "original" | "reviewed" | "ai_marked";
+    url: string;
+    sortOrder: number;
+  }>;
+  mistakes?: Array<{ id: string; status: "candidate" | "confirmed" | "dismissed" }>;
+};
+
+export type FeedbackItem = {
+  id: string;
+  campusId: string;
+  studentId: string;
+  teacherId: string;
+  behavior: string;
+  homework: string;
+  knowledge: string;
+  status: "draft" | "published";
+  publishedAt: string | null;
+  createdAt: string;
+  student?: { id: string; name: string };
+  teacher?: { id: string; name: string };
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -139,6 +182,48 @@ export function teacherCheckIn(payload: { campusId: string; note?: string }) {
 
 export function teacherCheckOut(payload: { campusId: string; note?: string }) {
   return apiRequest<TeacherAttendanceItem>("/attendance/teachers/check-out", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listHomeworkReviews(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<HomeworkReviewItem[]>(`/homework/reviews${query ? `?${query}` : ""}`);
+}
+
+export function createHomeworkReview(payload: {
+  studentId: string;
+  subject?: string;
+  originalImageUrl: string;
+  teacherComment?: string;
+}) {
+  return apiRequest<HomeworkReviewItem>("/homework/reviews", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function publishHomeworkReview(id: string, payload: { reviewedImageUrl?: string; teacherComment?: string }) {
+  return apiRequest<HomeworkReviewItem>(`/homework/reviews/${id}/publish`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listFeedback(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<FeedbackItem[]>(`/feedback${query ? `?${query}` : ""}`);
+}
+
+export function publishFeedback(payload: { studentId: string; behavior: string; homework: string; knowledge: string }) {
+  return apiRequest<FeedbackItem>("/feedback", {
     method: "POST",
     body: JSON.stringify(payload),
   });

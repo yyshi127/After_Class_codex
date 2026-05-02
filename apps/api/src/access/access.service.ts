@@ -1,5 +1,5 @@
-import { ForbiddenException, Injectable } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthenticatedUser } from "../auth/types";
 
@@ -90,5 +90,68 @@ export class AccessService {
     if (!user.campusIds.includes(campusId)) {
       throw new ForbiddenException("No access to this campus");
     }
+  }
+
+  buildStudentScopeWhere(
+    user: AuthenticatedUser,
+    options: { campusId?: string; classId?: string; studentId?: string } = {},
+  ): Prisma.StudentWhereInput {
+    const campusIds = options.campusId ? [options.campusId] : user.campusIds;
+    if (options.campusId) {
+      this.assertCampusAccess(user, options.campusId);
+    }
+
+    const base: Prisma.StudentWhereInput = {
+      campusId: { in: campusIds },
+      classId: options.classId || undefined,
+      id: options.studentId || undefined,
+    };
+
+    if (user.role === UserRole.admin) {
+      return base;
+    }
+
+    if (user.role === UserRole.teacher) {
+      return {
+        ...base,
+        class: {
+          teachers: {
+            some: { teacherId: user.id },
+          },
+        },
+      };
+    }
+
+    if (user.role === UserRole.guardian) {
+      return {
+        ...base,
+        guardians: {
+          some: {
+            guardian: {
+              userLinks: {
+                some: { userId: user.id },
+              },
+            },
+          },
+        },
+      };
+    }
+
+    return {
+      ...base,
+      userLinks: {
+        some: { userId: user.id },
+      },
+    };
+  }
+
+  async findAccessibleStudent(user: AuthenticatedUser, studentId: string) {
+    const student = await this.prisma.student.findFirst({
+      where: this.buildStudentScopeWhere(user, { studentId }),
+    });
+    if (!student) {
+      throw new NotFoundException("Student not found");
+    }
+    return student;
   }
 }

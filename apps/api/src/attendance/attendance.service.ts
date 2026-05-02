@@ -14,15 +14,9 @@ export class AttendanceService {
   ) {}
 
   listStudentAttendance(user: AuthenticatedUser, campusId?: string, studentId?: string) {
-    const campusIds = campusId ? [campusId] : user.campusIds;
-    if (campusId) {
-      this.accessService.assertCampusAccess(user, campusId);
-    }
-
     return this.prisma.attendanceRecord.findMany({
       where: {
-        campusId: { in: campusIds },
-        studentId: studentId || undefined,
+        student: this.accessService.buildStudentScopeWhere(user, { campusId, studentId }),
       },
       include: {
         student: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
@@ -37,8 +31,8 @@ export class AttendanceService {
       throw new ForbiddenException("Only admin or teacher can check in students");
     }
 
-    const student = await this.prisma.student.findUnique({
-      where: { id: dto.studentId },
+    const student = await this.prisma.student.findFirst({
+      where: this.accessService.buildStudentScopeWhere(user, { studentId: dto.studentId }),
       include: {
         guardians: {
           include: {
@@ -52,8 +46,6 @@ export class AttendanceService {
     if (!student) {
       throw new NotFoundException("Student not found");
     }
-
-    this.accessService.assertCampusAccess(user, student.campusId);
 
     const occurredAt = dto.occurredAt ? new Date(dto.occurredAt) : new Date();
     const record = await this.prisma.attendanceRecord.create({

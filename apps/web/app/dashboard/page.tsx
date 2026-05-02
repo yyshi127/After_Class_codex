@@ -36,7 +36,7 @@ const navItems = [
   { icon: Home, label: "首页", href: "/dashboard" },
   { icon: Users, label: "学生与班级", href: "/admin/students" },
   { icon: ClipboardCheck, label: "老师工作台", href: "/teacher/today" },
-  { icon: BookOpenCheck, label: "作业反馈", href: "/dashboard" },
+  { icon: BookOpenCheck, label: "作业反馈", href: "/teacher/homework" },
   { icon: ShieldCheck, label: "权限审计", href: "/dashboard" },
 ];
 

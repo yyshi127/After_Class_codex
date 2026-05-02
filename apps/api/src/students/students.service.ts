@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
 import type { AuthenticatedUser } from "../auth/types";
 import { AccessService } from "../access/access.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -13,15 +14,9 @@ export class StudentsService {
   ) {}
 
   async list(user: AuthenticatedUser, campusId?: string, classId?: string, status?: string) {
-    const campusIds = campusId ? [campusId] : user.campusIds;
-    if (campusId) {
-      this.accessService.assertCampusAccess(user, campusId);
-    }
-
     const students = await this.prisma.student.findMany({
       where: {
-        campusId: { in: campusIds },
-        classId: classId || undefined,
+        ...this.accessService.buildStudentScopeWhere(user, { campusId, classId }),
         status: status || undefined,
       },
       select: {
@@ -50,6 +45,7 @@ export class StudentsService {
 
   async create(user: AuthenticatedUser, dto: CreateStudentDto) {
     this.accessService.assertCampusAccess(user, dto.campusId);
+    await this.assertTeacherClassWritable(user, dto.classId, dto.campusId);
 
     return this.prisma.student.create({
       data: {
@@ -75,7 +71,9 @@ export class StudentsService {
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateStudentDto) {
-    const existing = await this.prisma.student.findUnique({ where: { id } });
+    const existing = await this.prisma.student.findFirst({
+      where: this.accessService.buildStudentScopeWhere(user, { studentId: id }),
+    });
     if (!existing) {
       throw new NotFoundException("Student not found");
     }
@@ -91,6 +89,7 @@ export class StudentsService {
       }
       this.accessService.assertCampusAccess(user, targetClass.campusId);
     }
+    await this.assertTeacherClassWritable(user, dto.classId ?? existing.classId ?? undefined, dto.campusId ?? existing.campusId);
 
     return this.prisma.student.update({
       where: { id },
@@ -115,6 +114,32 @@ export class StudentsService {
         status: true,
       },
     });
+  }
+
+  private async assertTeacherClassWritable(user: AuthenticatedUser, classId: string | undefined, campusId: string) {
+    if (user.role !== UserRole.teacher) {
+      return;
+    }
+
+    if (!classId) {
+      throw new ForbiddenException("Teacher can only operate students in assigned classes");
+    }
+
+    const classMatch = await this.prisma.class.findFirst({
+      where: {
+        id: classId,
+        campusId,
+        teachers: {
+          some: {
+            teacherId: user.id,
+          },
+        },
+      },
+      select: { id: true },
+    });
+    if (!classMatch) {
+      throw new ForbiddenException("Teacher can only operate students in assigned classes");
+    }
   }
 }
 

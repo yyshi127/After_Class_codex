@@ -68,6 +68,18 @@ enum MistakeStatus {
   dismissed
 }
 
+enum SimilarQuestionStatus {
+  candidate
+  selected
+  dismissed
+}
+
+enum PracticeSheetStatus {
+  generating
+  ready
+  failed
+}
+
 enum AiRiskLevel {
   low
   medium
@@ -93,6 +105,8 @@ model Campus {
   homeworkReviews HomeworkReview[]
   feedbacks Feedback[]
   mistakeBookItems MistakeBookItem[]
+  similarQuestions MistakeSimilarQuestion[]
+  practiceSheets PracticeSheet[]
 }
 
 model User {
@@ -116,6 +130,7 @@ model User {
   notifications Notification[]
   homeworkReviews HomeworkReview[]
   feedbacks Feedback[]
+  practiceSheets PracticeSheet[]
 }
 
 model Guardian {
@@ -154,6 +169,8 @@ model Student {
   homeworkReviews HomeworkReview[]
   feedbacks Feedback[]
   mistakeBookItems MistakeBookItem[]
+  similarQuestions MistakeSimilarQuestion[]
+  practiceSheets PracticeSheet[]
 }
 
 model UserGuardian {
@@ -388,6 +405,41 @@ model MistakeBookItem {
   campus  Campus          @relation(fields: [campusId], references: [id])
   student Student         @relation(fields: [studentId], references: [id])
   review  HomeworkReview? @relation(fields: [reviewId], references: [id])
+  similarQuestions MistakeSimilarQuestion[]
+}
+
+model MistakeSimilarQuestion {
+  id            String               @id @default(cuid())
+  campusId      String
+  studentId     String
+  mistakeItemId String
+  question      String
+  answer        String?
+  explanation   String?
+  status        SimilarQuestionStatus @default(candidate)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  campus      Campus          @relation(fields: [campusId], references: [id])
+  student     Student         @relation(fields: [studentId], references: [id])
+  mistakeItem MistakeBookItem @relation(fields: [mistakeItemId], references: [id], onDelete: Cascade)
+}
+
+model PracticeSheet {
+  id          String             @id @default(cuid())
+  campusId    String
+  studentId   String
+  teacherId   String
+  title       String?
+  fileUrl     String?
+  status      PracticeSheetStatus @default(generating)
+  errorReason String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  campus  Campus  @relation(fields: [campusId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+  teacher User    @relation(fields: [teacherId], references: [id])
 }
 
 model AiActionLog {
