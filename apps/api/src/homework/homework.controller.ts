@@ -8,6 +8,8 @@ import { PublishHomeworkReviewDto } from "./dto/publish-homework-review.dto";
 import { HomeworkService } from "./homework.service";
 import { UpdateMistakeStatusDto } from "./dto/update-mistake-status.dto";
 import { GenerateSimilarQuestionsDto } from "./dto/generate-similar-questions.dto";
+import { UpdateSimilarQuestionStatusDto } from "./dto/update-similar-question-status.dto";
+import { GeneratePracticeSheetDto } from "./dto/generate-practice-sheet.dto";
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -52,5 +54,15 @@ export class HomeworkController {
   @Post("mistakes/:id/similar-questions")
   generateSimilarQuestions(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: GenerateSimilarQuestionsDto) {
     return this.homeworkService.generateSimilarQuestions(user, id, dto);
+  }
+
+  @Patch("similar-questions/:id/status")
+  updateSimilarQuestionStatus(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpdateSimilarQuestionStatusDto) {
+    return this.homeworkService.updateSimilarQuestionStatus(user, id, dto);
+  }
+
+  @Post("practice-sheets")
+  generatePracticeSheet(@CurrentUser() user: AuthenticatedUser, @Body() dto: GeneratePracticeSheetDto) {
+    return this.homeworkService.generatePracticeSheet(user, dto);
   }
 }

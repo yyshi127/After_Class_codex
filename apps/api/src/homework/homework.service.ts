@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, SimilarQuestionStatus, UserRole } from "@prisma/client";
+import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, PracticeSheetStatus, SimilarQuestionStatus, UserRole } from "@prisma/client";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
 import { PrismaService } from "../prisma/prisma.service";
@@ -9,6 +9,8 @@ import { PublishHomeworkReviewDto } from "./dto/publish-homework-review.dto";
 import { NotificationsService } from "../notifications/notifications.service";
 import { UpdateMistakeStatusDto } from "./dto/update-mistake-status.dto";
 import { GenerateSimilarQuestionsDto } from "./dto/generate-similar-questions.dto";
+import { UpdateSimilarQuestionStatusDto } from "./dto/update-similar-question-status.dto";
+import { GeneratePracticeSheetDto } from "./dto/generate-practice-sheet.dto";
 
 @Injectable()
 export class HomeworkService {
@@ -199,6 +201,51 @@ export class HomeworkService {
     return this.prisma.mistakeBookItem.findUnique({
       where: { id: mistake.id },
       include: { similarQuestions: { orderBy: { createdAt: "desc" } } },
+    });
+  }
+
+  async updateSimilarQuestionStatus(user: AuthenticatedUser, id: string, dto: UpdateSimilarQuestionStatusDto) {
+    this.assertTeacherLike(user);
+    const question = await this.prisma.mistakeSimilarQuestion.findFirst({
+      where: {
+        id,
+        student: this.accessService.buildStudentScopeWhere(user),
+      },
+    });
+    if (!question) {
+      throw new NotFoundException("Similar question not found");
+    }
+
+    return this.prisma.mistakeSimilarQuestion.update({
+      where: { id },
+      data: { status: dto.status },
+    });
+  }
+
+  async generatePracticeSheet(user: AuthenticatedUser, dto: GeneratePracticeSheetDto) {
+    this.assertTeacherLike(user);
+    const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
+    const selectedQuestions = await this.prisma.mistakeSimilarQuestion.findMany({
+      where: {
+        id: { in: dto.similarQuestionIds },
+        studentId: student.id,
+        status: SimilarQuestionStatus.selected,
+      },
+    });
+
+    if (selectedQuestions.length === 0) {
+      throw new NotFoundException("No selected similar questions found");
+    }
+
+    return this.prisma.practiceSheet.create({
+      data: {
+        campusId: student.campusId,
+        studentId: student.id,
+        teacherId: user.id,
+        title: dto.title ?? `${student.name} 错题练习单`,
+        fileUrl: `pending://practice-sheets/${student.id}/${Date.now()}.docx`,
+        status: PracticeSheetStatus.ready,
+      },
     });
   }
 
