@@ -331,6 +331,25 @@ export function createStudent(payload: {
   });
 }
 
+export function updateStudent(
+  id: string,
+  payload: Partial<{
+    campusId: string;
+    classId: string;
+    name: string;
+    gender: string;
+    grade: string;
+    schoolName: string;
+    idCardNo: string;
+    status: string;
+  }>,
+) {
+  return apiRequest<StudentItem>(`/students/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function listClasses(campusId?: string) {
   const query = campusId ? `?campusId=${encodeURIComponent(campusId)}` : "";
   return apiRequest<ClassItem[]>(`/classes${query}`);

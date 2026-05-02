@@ -13,6 +13,7 @@ import {
   getStudentIdCardDetail,
   listClasses,
   listStudents,
+  updateStudent,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
 
@@ -192,6 +193,13 @@ export default function AdminStudentsPage() {
     await reload();
   }
 
+  async function onToggleStudentStatus(student: StudentItem) {
+    const nextStatus = student.status === "active" ? "paused" : "active";
+    await updateStudent(student.id, { status: nextStatus });
+    setMessage(`${student.name} 已${nextStatus === "active" ? "恢复在读" : "设为停读"}`);
+    await reload();
+  }
+
   async function onRevealIdCard(student: StudentItem) {
     if (idCardDetails[student.id] || idCardLoadingStudentId) return;
     setIdCardLoadingStudentId(student.id);
@@ -364,7 +372,18 @@ export default function AdminStudentsPage() {
                           </button>
                         ) : null}
                       </span>
-                      <span>{statusLabels[student.status] || student.status}</span>
+                      <span className="flex items-center gap-2">
+                        <span>{statusLabels[student.status] || student.status}</span>
+                        {user?.role === "admin" ? (
+                          <button
+                            type="button"
+                            onClick={() => void onToggleStudentStatus(student)}
+                            className="rounded-full bg-white/70 px-2 py-1 text-[11px] text-serenity-muted"
+                          >
+                            {student.status === "active" ? "设为停读" : "恢复在读"}
+                          </button>
+                        ) : null}
+                      </span>
                     </div>
                   ))}
                   {!students.length ? <div className="px-5 py-8 text-center text-sm text-serenity-muted">暂无学生</div> : null}
