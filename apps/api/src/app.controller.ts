@@ -185,4 +185,22 @@ export class AppController {
       recentLogs,
     };
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("admin")
+  @Get("ai-action-logs")
+  listAiActionLogs(@CurrentUser() user: AuthenticatedUser) {
+    return this.prisma.aiActionLog.findMany({
+      where: {
+        campusId: { in: user.campusIds },
+      },
+      include: {
+        campus: { select: { id: true, name: true } },
+        actor: { select: { id: true, name: true, role: true } },
+        confirmedBy: { select: { id: true, name: true, role: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+  }
 }

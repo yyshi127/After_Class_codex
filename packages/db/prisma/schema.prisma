@@ -131,6 +131,7 @@ model Campus {
   billingRecords BillingRecord[]
   teacherFeeConfigs TeacherFeeConfig[]
   classSettlements ClassSettlement[]
+  aiActionLogs AiActionLog[]
 }
 
 model User {
@@ -147,6 +148,8 @@ model User {
   campusAccess    UserCampus[]
   teacherClasses  TeacherClass[]
   auditLogs       AuditLog[]
+  aiActionLogs    AiActionLog[] @relation("AiActionActor")
+  confirmedAiActionLogs AiActionLog[] @relation("AiActionConfirmer")
   loginFailures   LoginFailure?
   guardianProfile UserGuardian?
   studentProfile  UserStudent?
@@ -565,14 +568,21 @@ model AiActionLog {
   id          String      @id @default(cuid())
   campusId    String?
   actorUserId String?
+  confirmedByUserId String?
   rawInput    String
   intent      String?
+  entities    Json?
   riskLevel   AiRiskLevel @default(low)
   confidence  Float?
+  requiresConfirmation Boolean @default(true)
   confirmedAt DateTime?
   result      String?
   error       String?
   createdAt   DateTime    @default(now())
+
+  campus      Campus? @relation(fields: [campusId], references: [id])
+  actor       User?   @relation("AiActionActor", fields: [actorUserId], references: [id])
+  confirmedBy User?   @relation("AiActionConfirmer", fields: [confirmedByUserId], references: [id])
 }
 
 model AuditLog {

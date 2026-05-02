@@ -55,7 +55,7 @@ const navItems = [
   { icon: CreditCard, label: "财务核算", href: "/admin/finance" },
   { icon: UserRound, label: "家长端", href: "/parent/home" },
   { icon: GraduationCap, label: "学生端", href: "/student/home" },
-  { icon: ShieldCheck, label: "权限审计", href: "/dashboard" },
+  { icon: ShieldCheck, label: "AI 日志", href: "/admin/ai-log" },
 ];
 
 export default function DashboardPage() {

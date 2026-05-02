@@ -203,6 +203,26 @@ export type AdminDashboardData = {
   }>;
 };
 
+export type AiActionLogItem = {
+  id: string;
+  campusId: string | null;
+  actorUserId: string | null;
+  confirmedByUserId: string | null;
+  rawInput: string;
+  intent: string | null;
+  entities: unknown;
+  riskLevel: "low" | "medium" | "high";
+  confidence: number | null;
+  requiresConfirmation: boolean;
+  confirmedAt: string | null;
+  result: string | null;
+  error: string | null;
+  createdAt: string;
+  campus?: { id: string; name: string } | null;
+  actor?: { id: string; name: string; role: string } | null;
+  confirmedBy?: { id: string; name: string; role: string } | null;
+};
+
 export type MistakeItem = {
   id: string;
   campusId: string;
@@ -471,6 +491,10 @@ export function generateClassSettlement(payload: { campusId: string; classId: st
 
 export function getAdminDashboard() {
   return apiRequest<AdminDashboardData>("/dashboard/admin");
+}
+
+export function listAiActionLogs() {
+  return apiRequest<AiActionLogItem[]>("/ai-action-logs");
 }
 
 export function listMistakes(params: { campusId?: string; studentId?: string }) {
