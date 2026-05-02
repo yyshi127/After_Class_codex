@@ -19,6 +19,18 @@ enum BillingCycle {
   semester
 }
 
+enum BillingStatus {
+  paid
+  partial
+  unpaid
+  refunded
+}
+
+enum ClassSettlementStatus {
+  draft
+  confirmed
+}
+
 enum AttendanceStatus {
   pending
   checked_in
@@ -116,6 +128,9 @@ model Campus {
   similarQuestions MistakeSimilarQuestion[]
   practiceSheets PracticeSheet[]
   fileObjects FileObject[]
+  billingRecords BillingRecord[]
+  teacherFeeConfigs TeacherFeeConfig[]
+  classSettlements ClassSettlement[]
 }
 
 model User {
@@ -141,6 +156,8 @@ model User {
   feedbacks Feedback[]
   practiceSheets PracticeSheet[]
   fileObjects FileObject[]
+  teacherFeeConfigs TeacherFeeConfig[]
+  classSettlements ClassSettlement[]
 }
 
 model Guardian {
@@ -172,6 +189,7 @@ model Student {
   class     Class?            @relation(fields: [classId], references: [id])
   guardians GuardianStudent[]
   services  StudentService[]
+  billingRecords BillingRecord[]
   userLinks UserStudent[]
   attendanceRecords AttendanceRecord[]
   leaveRequests LeaveRequest[]
@@ -235,6 +253,8 @@ model Class {
   campus   Campus         @relation(fields: [campusId], references: [id])
   teachers TeacherClass[]
   students Student[]
+  teacherFeeConfigs TeacherFeeConfig[]
+  classSettlements ClassSettlement[]
 }
 
 model UserCampus {
@@ -271,6 +291,7 @@ model ServiceType {
   updatedAt            DateTime @updatedAt
 
   studentServices StudentService[]
+  billingRecords BillingRecord[]
 }
 
 model StudentService {
@@ -285,6 +306,70 @@ model StudentService {
 
   student     Student     @relation(fields: [studentId], references: [id])
   serviceType ServiceType @relation(fields: [serviceTypeId], references: [id])
+}
+
+model BillingRecord {
+  id              String        @id @default(cuid())
+  campusId        String
+  studentId       String
+  serviceTypeId   String?
+  billingCycle    BillingCycle
+  periodStart     DateTime
+  periodEnd       DateTime
+  amountDueCents  Int
+  amountPaidCents Int
+  balanceCents    Int
+  status          BillingStatus @default(unpaid)
+  paidAt          DateTime?
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  campus      Campus       @relation(fields: [campusId], references: [id])
+  student     Student      @relation(fields: [studentId], references: [id])
+  serviceType ServiceType? @relation(fields: [serviceTypeId], references: [id])
+
+  @@index([campusId, periodStart, periodEnd])
+  @@index([studentId, periodStart, periodEnd])
+}
+
+model TeacherFeeConfig {
+  id                String    @id @default(cuid())
+  campusId          String
+  teacherId         String
+  classId           String?
+  feePerAttendCents Int
+  effectiveFrom     DateTime
+  effectiveTo       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  campus  Campus @relation(fields: [campusId], references: [id])
+  teacher User   @relation(fields: [teacherId], references: [id])
+  class   Class? @relation(fields: [classId], references: [id])
+}
+
+model ClassSettlement {
+  id                 String                @id @default(cuid())
+  campusId           String
+  classId            String
+  teacherId          String?
+  periodStart        DateTime
+  periodEnd          DateTime
+  studentAttendCount Int
+  incomeCents        Int
+  teacherFeeCents    Int
+  grossProfitCents   Int
+  status             ClassSettlementStatus @default(draft)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  campus  Campus @relation(fields: [campusId], references: [id])
+  class   Class  @relation(fields: [classId], references: [id])
+  teacher User?  @relation(fields: [teacherId], references: [id])
+
+  @@index([campusId, periodStart, periodEnd])
+  @@index([classId, periodStart, periodEnd])
 }
 
 model AttendanceRecord {
