@@ -49,6 +49,8 @@ export type TeacherAttendanceItem = {
   status: "checked_in" | "checked_out";
   occurredAt: string;
   note: string | null;
+  teacher?: { id: string; name: string; phone: string | null };
+  campus?: CampusOption;
 };
 
 export type HomeworkReviewItem = {

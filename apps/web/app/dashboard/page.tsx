@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BookOpenCheck, ClipboardCheck, CreditCard, Home, LogOut, School, ShieldCheck, UserRound, Users } from "lucide-react";
+import { BookOpenCheck, CalendarCheck2, ClipboardCheck, CreditCard, Home, LogOut, School, ShieldCheck, UserRound, Users } from "lucide-react";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../src/auth-client";
 
 const roleLabels: Record<AuthUser["role"], string> = {
@@ -35,6 +35,7 @@ const roleLanding: Record<AuthUser["role"], Array<{ title: string; text: string 
 const navItems = [
   { icon: Home, label: "首页", href: "/dashboard" },
   { icon: Users, label: "学生与班级", href: "/admin/students" },
+  { icon: CalendarCheck2, label: "考勤管理", href: "/admin/attendance" },
   { icon: ClipboardCheck, label: "老师工作台", href: "/teacher/today" },
   { icon: BookOpenCheck, label: "作业反馈", href: "/teacher/homework" },
   { icon: CreditCard, label: "财务核算", href: "/admin/finance" },
