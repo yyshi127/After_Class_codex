@@ -18,14 +18,18 @@ import {
   ClassItem,
   FeedbackItem,
   HomeworkReviewItem,
+  MistakeItem,
   StudentItem,
   createHomeworkReview,
+  generateSimilarQuestions,
   listClasses,
   listFeedback,
   listHomeworkReviews,
+  listMistakes,
   listStudents,
   publishFeedback,
   publishHomeworkReview,
+  updateMistakeStatus,
   uploadImage,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
@@ -43,6 +47,7 @@ export default function TeacherHomeworkPage() {
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [reviews, setReviews] = useState<HomeworkReviewItem[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<FeedbackItem[]>([]);
+  const [mistakes, setMistakes] = useState<MistakeItem[]>([]);
   const [campusId, setCampusId] = useState("");
   const [classId, setClassId] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -115,8 +120,10 @@ export default function TeacherHomeworkPage() {
         listHomeworkReviews({ campusId: selectedCampusId, studentId: activeStudentId || undefined }),
         listFeedback({ campusId: selectedCampusId, studentId: activeStudentId || undefined }),
       ]);
+      const mistakeRows = activeStudentId ? await listMistakes({ campusId: selectedCampusId, studentId: activeStudentId }) : [];
       setReviews(reviewRows);
       setFeedbackRows(feedbackList);
+      setMistakes(mistakeRows);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -169,6 +176,18 @@ export default function TeacherHomeworkPage() {
     if (!selectedStudentId) return;
     await publishFeedback({ studentId: selectedStudentId, behavior, homework, knowledge });
     setMessage("今日三类点评已发布，家长端可查看总结反馈。");
+    await reload();
+  }
+
+  async function onConfirmMistake(mistake: MistakeItem) {
+    await updateMistakeStatus(mistake.id, { status: "confirmed", knowledgePoint: mistake.knowledgePoint ?? "待确认知识点" });
+    setMessage("错题已确认进入错题本");
+    await reload();
+  }
+
+  async function onGenerateSimilar(mistake: MistakeItem) {
+    await generateSimilarQuestions(mistake.id, 3);
+    setMessage("已生成同类题候选");
     await reload();
   }
 
@@ -328,6 +347,27 @@ export default function TeacherHomeworkPage() {
                   </article>
                 ))}
                 {!feedbackRows.length ? <div className="rounded-3xl bg-serenity-bg p-6 text-center text-sm text-serenity-muted shadow-insetSoft">暂无今日点评</div> : null}
+              </div>
+            </section>
+
+            <section className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+              <h2 className="text-xl font-semibold">错题候选</h2>
+              <div className="mt-5 grid gap-3">
+                {mistakes.slice(0, 6).map((item) => (
+                  <article key={item.id} className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-serenity-ink">{item.subject || "作业错题"}</span>
+                      <span>{item.status === "confirmed" ? "已确认" : item.status === "dismissed" ? "已忽略" : "候选"}</span>
+                    </div>
+                    <div className="mt-2">{item.question || "待老师确认错题内容"}</div>
+                    <div className="mt-2">同类题：{item.similarQuestions?.length ?? 0} 条</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button onClick={() => void onConfirmMistake(item)} className="rounded-2xl bg-serenity-blue px-3 py-2 text-xs font-semibold text-white">确认错题</button>
+                      <button onClick={() => void onGenerateSimilar(item)} className="rounded-2xl bg-white/70 px-3 py-2 text-xs font-semibold text-serenity-ink">生成同类题</button>
+                    </div>
+                  </article>
+                ))}
+                {!mistakes.length ? <div className="rounded-3xl bg-serenity-bg p-6 text-center text-sm text-serenity-muted shadow-insetSoft">暂无错题候选</div> : null}
               </div>
             </section>
 

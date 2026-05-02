@@ -163,6 +163,28 @@ export type ClassSettlementItem = {
   teacher?: { id: string; name: string } | null;
 };
 
+export type MistakeItem = {
+  id: string;
+  campusId: string;
+  studentId: string;
+  reviewId: string | null;
+  subject: string | null;
+  knowledgePoint: string | null;
+  question: string | null;
+  answer: string | null;
+  explanation: string | null;
+  status: "candidate" | "confirmed" | "dismissed";
+  createdAt: string;
+  student?: { id: string; name: string; class?: { id: string; name: string } | null };
+  similarQuestions?: Array<{
+    id: string;
+    question: string;
+    answer: string | null;
+    explanation: string | null;
+    status: "candidate" | "selected" | "dismissed";
+  }>;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -390,5 +412,27 @@ export function generateClassSettlement(payload: { campusId: string; classId: st
   return apiRequest<ClassSettlementItem>("/finance/class-settlements/generate", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function listMistakes(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<MistakeItem[]>(`/mistakes${query ? `?${query}` : ""}`);
+}
+
+export function updateMistakeStatus(id: string, payload: { status: "candidate" | "confirmed" | "dismissed"; knowledgePoint?: string }) {
+  return apiRequest<MistakeItem>(`/mistakes/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function generateSimilarQuestions(id: string, count = 3) {
+  return apiRequest<MistakeItem>(`/mistakes/${id}/similar-questions`, {
+    method: "POST",
+    body: JSON.stringify({ count }),
   });
 }
