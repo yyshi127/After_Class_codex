@@ -8,6 +8,7 @@ import { StudentsModule } from "./students/students.module";
 import { ClassesModule } from "./classes/classes.module";
 import { AttendanceModule } from "./attendance/attendance.module";
 import { HomeworkModule } from "./homework/homework.module";
+import { FilesModule } from "./files/files.module";
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { HomeworkModule } from "./homework/homework.module";
     ClassesModule,
     AttendanceModule,
     HomeworkModule,
+    FilesModule,
   ],
   controllers: [AppController],
 })

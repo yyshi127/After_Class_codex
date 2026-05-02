@@ -80,6 +80,14 @@ enum PracticeSheetStatus {
   failed
 }
 
+enum FileObjectType {
+  checkin_photo
+  homework_original
+  homework_reviewed
+  homework_ai_marked
+  practice_sheet
+}
+
 enum AiRiskLevel {
   low
   medium
@@ -107,6 +115,7 @@ model Campus {
   mistakeBookItems MistakeBookItem[]
   similarQuestions MistakeSimilarQuestion[]
   practiceSheets PracticeSheet[]
+  fileObjects FileObject[]
 }
 
 model User {
@@ -131,6 +140,7 @@ model User {
   homeworkReviews HomeworkReview[]
   feedbacks Feedback[]
   practiceSheets PracticeSheet[]
+  fileObjects FileObject[]
 }
 
 model Guardian {
@@ -171,6 +181,7 @@ model Student {
   mistakeBookItems MistakeBookItem[]
   similarQuestions MistakeSimilarQuestion[]
   practiceSheets PracticeSheet[]
+  fileObjects FileObject[]
 }
 
 model UserGuardian {
@@ -440,6 +451,29 @@ model PracticeSheet {
   campus  Campus  @relation(fields: [campusId], references: [id])
   student Student @relation(fields: [studentId], references: [id])
   teacher User    @relation(fields: [teacherId], references: [id])
+}
+
+model FileObject {
+  id            String         @id @default(cuid())
+  campusId      String
+  studentId     String?
+  uploadedById  String
+  objectKey     String         @unique
+  bucket        String
+  mimeType      String
+  size          Int
+  type          FileObjectType
+  businessType  String?
+  businessId    String?
+  originalName  String?
+  createdAt     DateTime       @default(now())
+
+  campus     Campus   @relation(fields: [campusId], references: [id])
+  student    Student? @relation(fields: [studentId], references: [id])
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([campusId, type])
+  @@index([studentId, type])
 }
 
 model AiActionLog {

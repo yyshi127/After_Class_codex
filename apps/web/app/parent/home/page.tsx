@@ -8,6 +8,7 @@ import {
   HomeworkReviewItem,
   StudentAttendanceItem,
   StudentItem,
+  getFileSignedUrl,
   listFeedback,
   listHomeworkReviews,
   listStudentAttendance,
@@ -183,7 +184,7 @@ export default function ParentHomePage() {
                           <ImageIcon className="h-4 w-4 text-serenity-blue" />
                           {image.type === "original" ? "作业原图" : image.type === "reviewed" ? "老师批改图" : "AI 圈错图"}
                         </div>
-                        <div className="mt-2 break-all text-xs">{image.url}</div>
+                        <HomeworkImage url={image.url} />
                       </div>
                     ))}
                   </div>
@@ -232,5 +233,35 @@ export default function ParentHomePage() {
         </div>
       </nav>
     </main>
+  );
+}
+
+function HomeworkImage({ url }: { url: string }) {
+  const [resolvedUrl, setResolvedUrl] = useState(url);
+
+  useEffect(() => {
+    if (!url.startsWith("file:")) {
+      setResolvedUrl(url);
+      return;
+    }
+    getFileSignedUrl(url.slice("file:".length))
+      .then((result) => setResolvedUrl(result.signedUrl))
+      .catch(() => setResolvedUrl(""));
+  }, [url]);
+
+  if (!resolvedUrl) {
+    return <div className="mt-2 rounded-2xl bg-white/70 p-4 text-xs text-serenity-muted">图片暂时无法访问</div>;
+  }
+
+  if (!resolvedUrl.startsWith("http")) {
+    return <div className="mt-2 break-all text-xs">{resolvedUrl}</div>;
+  }
+
+  return (
+    <img
+      src={resolvedUrl}
+      alt="作业图片"
+      className="mt-3 aspect-[4/3] w-full rounded-2xl object-cover shadow-insetSoft"
+    />
   );
 }

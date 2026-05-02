@@ -26,6 +26,7 @@ import {
   listStudents,
   publishFeedback,
   publishHomeworkReview,
+  uploadImage,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
 
@@ -48,6 +49,8 @@ export default function TeacherHomeworkPage() {
   const [subject, setSubject] = useState("数学");
   const [originalImageUrl, setOriginalImageUrl] = useState("s3://dev/homework/original.jpg");
   const [reviewedImageUrl, setReviewedImageUrl] = useState("s3://dev/homework/reviewed.jpg");
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [reviewedFile, setReviewedFile] = useState<File | null>(null);
   const [teacherComment, setTeacherComment] = useState("作业已批改，错题已标记，请回家后订正。");
   const [behavior, setBehavior] = useState("上课专注，能主动跟进老师提醒。");
   const [homework, setHomework] = useState("今日作业按时完成，书写较整洁。");
@@ -123,10 +126,11 @@ export default function TeacherHomeworkPage() {
 
   async function onCreateReview() {
     if (!selectedStudentId) return;
+    const imageUrl = await uploadSelectedImage("homework_original", originalFile, originalImageUrl);
     await createHomeworkReview({
       studentId: selectedStudentId,
       subject,
-      originalImageUrl,
+      originalImageUrl: imageUrl,
       teacherComment,
     });
     setMessage("作业原图已保存，等待老师确认批改图后发布。");
@@ -135,9 +139,30 @@ export default function TeacherHomeworkPage() {
 
   async function onPublishReview() {
     if (!pendingReview) return;
-    await publishHomeworkReview(pendingReview.id, { reviewedImageUrl, teacherComment });
+    const imageUrl = await uploadSelectedImage("homework_reviewed", reviewedFile, reviewedImageUrl, pendingReview.id);
+    await publishHomeworkReview(pendingReview.id, { reviewedImageUrl: imageUrl, teacherComment });
     setMessage("批改图片已反馈给家长，错题已进入候选错题本。");
     await reload();
+  }
+
+  async function uploadSelectedImage(
+    type: "homework_original" | "homework_reviewed",
+    file: File | null,
+    fallbackUrl: string,
+    businessId?: string,
+  ) {
+    if (!file) {
+      return fallbackUrl;
+    }
+    const uploaded = await uploadImage({
+      file,
+      campusId: selectedCampusId,
+      studentId: selectedStudentId,
+      type,
+      businessType: "homework_review",
+      businessId,
+    });
+    return `file:${uploaded.id}`;
   }
 
   async function onPublishFeedback() {
@@ -220,6 +245,14 @@ export default function TeacherHomeworkPage() {
                 <label className="grid gap-2 text-sm text-serenity-muted">
                   批改图片地址
                   <input className="h-11 rounded-2xl bg-serenity-bg px-4 text-serenity-ink shadow-insetSoft outline-none" value={reviewedImageUrl} onChange={(event) => setReviewedImageUrl(event.target.value)} />
+                </label>
+                <label className="grid gap-2 text-sm text-serenity-muted">
+                  上传作业原图
+                  <input className="rounded-2xl bg-serenity-bg px-4 py-3 text-sm shadow-insetSoft file:mr-3 file:rounded-xl file:border-0 file:bg-serenity-blue file:px-3 file:py-2 file:text-white" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setOriginalFile(event.target.files?.[0] ?? null)} />
+                </label>
+                <label className="grid gap-2 text-sm text-serenity-muted">
+                  上传批改图片
+                  <input className="rounded-2xl bg-serenity-bg px-4 py-3 text-sm shadow-insetSoft file:mr-3 file:rounded-xl file:border-0 file:bg-serenity-blue file:px-3 file:py-2 file:text-white" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setReviewedFile(event.target.files?.[0] ?? null)} />
                 </label>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">

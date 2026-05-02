@@ -94,6 +94,17 @@ export type FeedbackItem = {
   teacher?: { id: string; name: string };
 };
 
+export type UploadedFileObject = {
+  id: string;
+  campusId: string;
+  studentId: string | null;
+  objectKey: string;
+  mimeType: string;
+  size: number;
+  type: "checkin_photo" | "homework_original" | "homework_reviewed" | "homework_ai_marked" | "practice_sheet";
+  signedUrl: string;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -227,4 +238,45 @@ export function publishFeedback(payload: { studentId: string; behavior: string; 
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function uploadImage(payload: {
+  file: File;
+  campusId: string;
+  studentId?: string;
+  type: UploadedFileObject["type"];
+  businessType?: string;
+  businessId?: string;
+}) {
+  const token = getStoredToken();
+  const formData = new FormData();
+  formData.set("file", payload.file);
+  formData.set("campusId", payload.campusId);
+  if (payload.studentId) formData.set("studentId", payload.studentId);
+  formData.set("type", payload.type);
+  if (payload.businessType) formData.set("businessType", payload.businessType);
+  if (payload.businessId) formData.set("businessId", payload.businessId);
+
+  const response = await fetch(`${getApiBaseUrl()}/files/images`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+
+  if (response.status === 401) {
+    clearSession();
+    throw new Error("登录状态已失效");
+  }
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return (await response.json()) as UploadedFileObject;
+}
+
+export async function getFileSignedUrl(id: string) {
+  return apiRequest<{ id: string; signedUrl: string; expiresIn: number }>(`/files/${id}/signed-url`);
 }
