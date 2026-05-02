@@ -7,9 +7,11 @@ import {
   FeedbackItem,
   HomeworkReviewItem,
   NotificationItem,
+  ServiceSummary,
   StudentAttendanceItem,
   StudentItem,
   getFileSignedUrl,
+  getServiceSummary,
   listFeedback,
   listHomeworkReviews,
   listNotifications,
@@ -41,6 +43,7 @@ export default function ParentHomePage() {
   const [reviews, setReviews] = useState<HomeworkReviewItem[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<FeedbackItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [serviceSummary, setServiceSummary] = useState<ServiceSummary | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -96,19 +99,23 @@ export default function ParentHomePage() {
         setAttendanceRows([]);
         setReviews([]);
         setFeedbackRows([]);
+        setNotifications([]);
+        setServiceSummary(null);
         return;
       }
 
-      const [attendanceList, reviewList, feedbackList] = await Promise.all([
+      const [attendanceList, reviewList, feedbackList, notificationList, serviceInfo] = await Promise.all([
         listStudentAttendance({ campusId, studentId }),
         listHomeworkReviews({ campusId, studentId }),
         listFeedback({ campusId, studentId }),
+        listNotifications({ campusId, studentId }),
+        getServiceSummary(studentId),
       ]);
-      const notificationList = await listNotifications({ campusId, studentId });
       setAttendanceRows(attendanceList);
       setReviews(reviewList);
       setFeedbackRows(feedbackList);
       setNotifications(notificationList);
+      setServiceSummary(serviceInfo);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -206,6 +213,16 @@ export default function ParentHomePage() {
             </div>
             {latestFeedback ? (
               <div className="mt-4 grid gap-3 text-sm leading-6 text-serenity-muted">
+                <div className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft">
+                  <div>
+                    <span className="font-semibold text-serenity-ink">点评老师：</span>
+                    {latestFeedback.teacher?.name ?? "老师"}
+                  </div>
+                  <div className="mt-1">
+                    <span className="font-semibold text-serenity-ink">发布时间：</span>
+                    {latestFeedback.publishedAt ? new Date(latestFeedback.publishedAt).toLocaleString("zh-CN") : "待发布"}
+                  </div>
+                </div>
                 <div className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft"><span className="font-semibold text-serenity-ink">行为表现：</span>{latestFeedback.behavior}</div>
                 <div className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft"><span className="font-semibold text-serenity-ink">作业完成：</span>{latestFeedback.homework}</div>
                 <div className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft"><span className="font-semibold text-serenity-ink">知识掌握：</span>{latestFeedback.knowledge}</div>
@@ -238,7 +255,10 @@ export default function ParentHomePage() {
               <h2 className="text-lg font-semibold">服务信息</h2>
             </div>
             <div className="mt-4 rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
-              当前页面仅展示服务有效期和续费提示入口，不展示余额、欠费金额、班级核算或机构收入。
+              <div><span className="font-semibold text-serenity-ink">托管类型：</span>{serviceSummary?.serviceType?.name ?? "待确认"}</div>
+              <div><span className="font-semibold text-serenity-ink">服务有效期：</span>{serviceSummary?.validTo ? `至 ${new Date(serviceSummary.validTo).toLocaleDateString("zh-CN")}` : "待确认"}</div>
+              <div className="mt-2">{serviceSummary?.renewHint ?? "当前页面仅展示服务有效期和续费提示入口。"}</div>
+              <div className="mt-2">不展示余额、欠费金额、班级核算或机构收入。</div>
             </div>
           </article>
         </section>

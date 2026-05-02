@@ -10,6 +10,7 @@ import { AttendanceModule } from "./attendance/attendance.module";
 import { HomeworkModule } from "./homework/homework.module";
 import { FilesModule } from "./files/files.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { FinanceModule } from "./finance/finance.module";
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     HomeworkModule,
     FilesModule,
     NotificationsModule,
+    FinanceModule,
   ],
   controllers: [AppController],
 })

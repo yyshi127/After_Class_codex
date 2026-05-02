@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, BillingCycle } from "@prisma/client";
+import { BillingCycle, BillingStatus, PrismaClient, UserRole } from "@prisma/client";
 import { hash } from "bcryptjs";
 
 const prisma = new PrismaClient();
@@ -191,6 +191,41 @@ async function main() {
       validTo: new Date("2026-05-31T23:59:59.000Z"),
     },
   });
+
+  await prisma.billingRecord.upsert({
+    where: { id: "seed-billing-record-one" },
+    update: {},
+    create: {
+      id: "seed-billing-record-one",
+      campusId: campus.id,
+      studentId: student.id,
+      serviceTypeId: homeworkOnly.id,
+      billingCycle: BillingCycle.monthly,
+      periodStart: new Date("2026-05-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-05-31T23:59:59.000Z"),
+      amountDueCents: 120000,
+      amountPaidCents: 120000,
+      balanceCents: 0,
+      status: BillingStatus.paid,
+      paidAt: new Date("2026-05-01T08:00:00.000Z"),
+      note: "五月晚辅导月缴",
+    },
+  });
+
+  const existingFeeConfig = await prisma.teacherFeeConfig.findFirst({
+    where: { campusId: campus.id, teacherId: teacher.id, classId: classOne.id },
+  });
+  if (!existingFeeConfig) {
+    await prisma.teacherFeeConfig.create({
+      data: {
+        campusId: campus.id,
+        teacherId: teacher.id,
+        classId: classOne.id,
+        feePerAttendCents: 3000,
+        effectiveFrom: new Date("2026-05-01T00:00:00.000Z"),
+      },
+    });
+  }
 
   console.log("Seed complete.");
   console.log("Admin login: 13800000000 / Admin123456");

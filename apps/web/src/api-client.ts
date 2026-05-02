@@ -119,6 +119,15 @@ export type NotificationItem = {
   createdAt: string;
 };
 
+export type ServiceSummary = {
+  studentId: string;
+  studentName: string;
+  serviceType: { code: string; name: string } | null;
+  validFrom: string | null;
+  validTo: string | null;
+  renewHint: string;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -301,4 +310,8 @@ export function listNotifications(params: { campusId?: string; studentId?: strin
   if (params.studentId) search.set("studentId", params.studentId);
   const query = search.toString();
   return apiRequest<NotificationItem[]>(`/notifications${query ? `?${query}` : ""}`);
+}
+
+export function getServiceSummary(studentId: string) {
+  return apiRequest<ServiceSummary>(`/finance/service-summary?studentId=${encodeURIComponent(studentId)}`);
 }
