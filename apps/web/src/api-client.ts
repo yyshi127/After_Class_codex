@@ -128,6 +128,39 @@ export type ServiceSummary = {
   renewHint: string;
 };
 
+export type BillingRecordItem = {
+  id: string;
+  campusId: string;
+  studentId: string;
+  billingCycle: "monthly" | "semester";
+  periodStart: string;
+  periodEnd: string;
+  amountDueCents: number;
+  amountPaidCents: number;
+  balanceCents: number;
+  status: "paid" | "partial" | "unpaid" | "refunded";
+  paidAt: string | null;
+  note: string | null;
+  student?: { id: string; name: string; class?: { id: string; name: string } | null };
+  serviceType?: { id: string; code: string; name: string } | null;
+};
+
+export type ClassSettlementItem = {
+  id: string;
+  campusId: string;
+  classId: string;
+  teacherId: string | null;
+  periodStart: string;
+  periodEnd: string;
+  studentAttendCount: number;
+  incomeCents: number;
+  teacherFeeCents: number;
+  grossProfitCents: number;
+  status: "draft" | "confirmed";
+  class?: { id: string; name: string };
+  teacher?: { id: string; name: string } | null;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -314,4 +347,46 @@ export function listNotifications(params: { campusId?: string; studentId?: strin
 
 export function getServiceSummary(studentId: string) {
   return apiRequest<ServiceSummary>(`/finance/service-summary?studentId=${encodeURIComponent(studentId)}`);
+}
+
+export function listBillingRecords(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<BillingRecordItem[]>(`/finance/billing-records${query ? `?${query}` : ""}`);
+}
+
+export function createBillingRecord(payload: {
+  campusId: string;
+  studentId: string;
+  billingCycle: "monthly" | "semester";
+  periodStart: string;
+  periodEnd: string;
+  amountDueCents: number;
+  amountPaidCents: number;
+  paidAt?: string;
+  note?: string;
+}) {
+  return apiRequest<BillingRecordItem>("/finance/billing-records", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listClassSettlements(params: { campusId?: string; classId?: string; periodStart?: string; periodEnd?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.classId) search.set("classId", params.classId);
+  if (params.periodStart) search.set("periodStart", params.periodStart);
+  if (params.periodEnd) search.set("periodEnd", params.periodEnd);
+  const query = search.toString();
+  return apiRequest<ClassSettlementItem[]>(`/finance/class-settlements${query ? `?${query}` : ""}`);
+}
+
+export function generateClassSettlement(payload: { campusId: string; classId: string; periodStart: string; periodEnd: string }) {
+  return apiRequest<ClassSettlementItem>("/finance/class-settlements/generate", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
