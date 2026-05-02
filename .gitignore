@@ -11,4 +11,5 @@ coverage/
 *.tsbuildinfo
 backups/
 logs/
+.codex-automation.lock
 storage/

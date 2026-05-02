@@ -69,6 +69,17 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Stop and ask only when there is a security risk, insufficient permission, conflicting requirements, a need to access external private resources, or a product decision that must be made by the user.
 - For each completed work batch, verify with the relevant checks, update the task checklist, and report what changed plus the next item being handled.
 
+## 6. Automation Concurrency Guard
+
+**Only one automation run may write to this project at a time.**
+
+- Before an automation run starts development work, it must check for `.codex-automation.lock` in the project root.
+- If the lock file exists and its timestamp is less than 2 hours old, the automation must treat the previous run as still active and stop without editing files, committing, pushing, running migrations, or updating the task checklist.
+- If the lock file exists and is more than 2 hours old, treat it as stale only after checking `git status` and active project processes; then replace it with a fresh lock.
+- A running automation must create `.codex-automation.lock` before making changes. The lock should include the start time, branch, and short task summary.
+- At the end of a successful or failed run, remove `.codex-automation.lock` before reporting results.
+- If a run finds an active lock, its result should say that it skipped work because a previous automation run is still in progress.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
