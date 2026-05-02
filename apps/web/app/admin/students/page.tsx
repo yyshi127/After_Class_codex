@@ -11,7 +11,10 @@ import {
   createClass,
   createStudent,
   getStudentIdCardDetail,
+  listBillingRecords,
   listClasses,
+  listHomeworkReviews,
+  listStudentAttendance,
   listStudents,
   updateStudent,
 } from "../../../src/api-client";
@@ -25,6 +28,26 @@ const statusLabels: Record<string, string> = {
 const billingCycleLabels: Record<string, string> = {
   monthly: "月缴",
   semester: "学期缴",
+};
+
+const attendanceLabels: Record<string, string> = {
+  pending: "未到",
+  checked_in: "已到",
+  checked_out: "已离校",
+  leave: "请假",
+  absent: "缺勤",
+};
+
+const homeworkLabels: Record<string, string> = {
+  pending: "待批改",
+  completed: "已完成",
+  needs_correction: "需订正",
+};
+
+type StudentSummary = {
+  attendance: string;
+  homework: string;
+  billing: string;
 };
 
 const serviceTypeCards = [
@@ -67,10 +90,15 @@ function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatMoney(cents: number) {
+  return `¥${(cents / 100).toFixed(2)}`;
+}
+
 export default function AdminStudentsPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [students, setStudents] = useState<StudentItem[]>([]);
+  const [studentSummaries, setStudentSummaries] = useState<Record<string, StudentSummary>>({});
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [campusId, setCampusId] = useState("");
   const [classId, setClassId] = useState("");
@@ -137,12 +165,31 @@ export default function AdminStudentsPage() {
     setLoading(true);
     setMessage("");
     try {
-      const [studentRows, classRows] = await Promise.all([
+      const [studentRows, classRows, attendanceRows, homeworkRows, billingRows] = await Promise.all([
         listStudents({ campusId: selectedCampusId, classId: classId || undefined, status: status || undefined }),
         listClasses(selectedCampusId),
+        listStudentAttendance({ campusId: selectedCampusId }),
+        listHomeworkReviews({ campusId: selectedCampusId }),
+        listBillingRecords({ campusId: selectedCampusId }),
       ]);
+      const summaries: Record<string, StudentSummary> = {};
+      for (const student of studentRows) {
+        const latestAttendance = attendanceRows.find((item) => item.studentId === student.id);
+        const studentHomework = homeworkRows.filter((item) => item.studentId === student.id);
+        const latestBilling = billingRows.find((item) => item.studentId === student.id);
+        const completedCount = studentHomework.filter((item) => item.status === "completed").length;
+        const correctionCount = studentHomework.filter((item) => item.status === "needs_correction").length;
+        summaries[student.id] = {
+          attendance: latestAttendance ? attendanceLabels[latestAttendance.status] || latestAttendance.status : "暂无记录",
+          homework: studentHomework.length
+            ? `${completedCount}/${studentHomework.length} ${correctionCount ? `，${correctionCount} 个需订正` : homeworkLabels.completed}`
+            : "暂无作业",
+          billing: latestBilling ? `余额 ${formatMoney(latestBilling.balanceCents)}` : "暂无缴费",
+        };
+      }
       setStudents(studentRows);
       setClasses(classRows);
+      setStudentSummaries(summaries);
       setServiceForm((prev) => ({ ...prev, studentId: prev.studentId || studentRows[0]?.id || "" }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
@@ -328,20 +375,21 @@ export default function AdminStudentsPage() {
               </div>
 
               <div className="mt-5 overflow-x-auto rounded-3xl bg-serenity-bg shadow-insetSoft">
-                <div className="min-w-[980px]">
-                  <div className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.2fr_0.7fr] gap-3 border-b border-white/70 px-5 py-3 text-sm font-semibold text-serenity-muted">
+                <div className="min-w-[1180px]">
+                  <div className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.3fr_1.2fr_0.8fr] gap-3 border-b border-white/70 px-5 py-3 text-sm font-semibold text-serenity-muted">
                     <span>姓名</span>
                     <span>年级</span>
                     <span>班级</span>
                     <span>托管服务</span>
                     <span>服务有效期</span>
+                    <span>考勤/作业/缴费摘要</span>
                     <span>身份证号</span>
                     <span>状态</span>
                   </div>
                   {students.map((student) => (
                     <div
                       key={student.id}
-                      className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.2fr_0.7fr] gap-3 px-5 py-4 text-sm"
+                      className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.3fr_1.2fr_0.8fr] gap-3 px-5 py-4 text-sm"
                     >
                       <span className="font-medium">{student.name}</span>
                       <span>{student.grade || "-"}</span>
@@ -358,6 +406,11 @@ export default function AdminStudentsPage() {
                         ) : (
                           "-"
                         )}
+                      </span>
+                      <span className="grid gap-1 text-xs leading-5 text-serenity-muted">
+                        <span>考勤：{studentSummaries[student.id]?.attendance ?? "-"}</span>
+                        <span>作业：{studentSummaries[student.id]?.homework ?? "-"}</span>
+                        <span>缴费：{studentSummaries[student.id]?.billing ?? "-"}</span>
                       </span>
                       <span className="flex items-center gap-2">
                         <span>{student.idCardNoFull || idCardDetails[student.id] || student.idCardNoMasked || "未录入"}</span>
