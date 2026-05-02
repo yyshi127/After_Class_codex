@@ -163,6 +163,46 @@ export type ClassSettlementItem = {
   teacher?: { id: string; name: string } | null;
 };
 
+export type AdminDashboardData = {
+  date: string;
+  metrics: {
+    todayCareStudentCount: number;
+    activeStudentCount: number;
+    attendanceRate: number;
+    pendingLeaveCount: number;
+    homeworkCompletionRate: number;
+    todayHomeworkTotal: number;
+    expiringServiceCount: number;
+    riskWarningCount: number;
+    overdueBillingCount: number;
+  };
+  campusOverview: Array<{
+    id: string;
+    name: string;
+    classCount: number;
+    activeStudentCount: number;
+    todayAttendanceCount: number;
+  }>;
+  classStatus: Array<{
+    id: string;
+    name: string;
+    campusId: string;
+    campusName: string;
+    activeStudentCount: number;
+    todayAttendanceCount: number;
+    attendanceRate: number;
+  }>;
+  recentLogs: Array<{
+    id: string;
+    action: string;
+    targetType: string | null;
+    targetId: string | null;
+    createdAt: string;
+    actor?: { id: string; name: string } | null;
+    campus?: { id: string; name: string } | null;
+  }>;
+};
+
 export type MistakeItem = {
   id: string;
   campusId: string;
@@ -427,6 +467,10 @@ export function generateClassSettlement(payload: { campusId: string; classId: st
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getAdminDashboard() {
+  return apiRequest<AdminDashboardData>("/dashboard/admin");
 }
 
 export function listMistakes(params: { campusId?: string; studentId?: string }) {
