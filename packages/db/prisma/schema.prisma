@@ -1,0 +1,419 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  teacher
+  guardian
+  student
+}
+
+enum BillingCycle {
+  monthly
+  semester
+}
+
+enum AttendanceStatus {
+  pending
+  checked_in
+  checked_out
+  leave
+  absent
+}
+
+enum TeacherAttendanceStatus {
+  checked_in
+  checked_out
+}
+
+enum LeaveRequestStatus {
+  pending
+  approved
+  rejected
+  cancelled
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+}
+
+enum HomeworkStatus {
+  pending
+  completed
+  needs_correction
+}
+
+enum HomeworkImageType {
+  original
+  reviewed
+  ai_marked
+}
+
+enum FeedbackStatus {
+  draft
+  published
+}
+
+enum MistakeStatus {
+  candidate
+  confirmed
+  dismissed
+}
+
+enum AiRiskLevel {
+  low
+  medium
+  high
+}
+
+model Campus {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  classes   Class[]
+  students  Student[]
+  userCampuses UserCampus[]
+  auditLogs AuditLog[]
+  attendanceRecords AttendanceRecord[]
+  teacherAttendances TeacherAttendance[]
+  leaveRequests LeaveRequest[]
+  notifications Notification[]
+  homeworkReviews HomeworkReview[]
+  feedbacks Feedback[]
+  mistakeBookItems MistakeBookItem[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  campusId     String?
+  role         UserRole
+  name         String
+  phone        String?  @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campus          Campus?        @relation(fields: [campusId], references: [id])
+  campusAccess    UserCampus[]
+  teacherClasses  TeacherClass[]
+  auditLogs       AuditLog[]
+  loginFailures   LoginFailure?
+  guardianProfile UserGuardian?
+  studentProfile  UserStudent?
+  teacherAttendances TeacherAttendance[]
+  notifications Notification[]
+  homeworkReviews HomeworkReview[]
+  feedbacks Feedback[]
+}
+
+model Guardian {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students GuardianStudent[]
+  userLinks UserGuardian[]
+  notifications Notification[]
+}
+
+model Student {
+  id                String   @id @default(cuid())
+  campusId          String
+  classId           String?
+  name              String
+  gender            String?
+  grade             String?
+  schoolName        String?
+  idCardNoEncrypted String?
+  status            String   @default("active")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  campus    Campus            @relation(fields: [campusId], references: [id])
+  class     Class?            @relation(fields: [classId], references: [id])
+  guardians GuardianStudent[]
+  services  StudentService[]
+  userLinks UserStudent[]
+  attendanceRecords AttendanceRecord[]
+  leaveRequests LeaveRequest[]
+  notifications Notification[]
+  homeworkReviews HomeworkReview[]
+  feedbacks Feedback[]
+  mistakeBookItems MistakeBookItem[]
+}
+
+model UserGuardian {
+  userId     String @id
+  guardianId String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@index([guardianId])
+}
+
+model UserStudent {
+  userId    String @id
+  studentId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+}
+
+model LoginFailure {
+  userId         String   @id
+  failedCount    Int      @default(0)
+  lockedUntil    DateTime?
+  lastFailedAt   DateTime?
+  lastSucceededAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GuardianStudent {
+  guardianId String
+  studentId  String
+  relation   String?
+
+  guardian Guardian @relation(fields: [guardianId], references: [id])
+  student  Student  @relation(fields: [studentId], references: [id])
+
+  @@id([guardianId, studentId])
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  campusId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campus   Campus         @relation(fields: [campusId], references: [id])
+  teachers TeacherClass[]
+  students Student[]
+}
+
+model UserCampus {
+  userId    String
+  campusId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campus Campus @relation(fields: [campusId], references: [id], onDelete: Cascade)
+
+  @@id([userId, campusId])
+}
+
+model TeacherClass {
+  teacherId String
+  classId   String
+  createdAt DateTime @default(now())
+
+  teacher User  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@id([teacherId, classId])
+}
+
+model ServiceType {
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  name                 String
+  includesPickup       Boolean
+  includesMeal         Boolean
+  includesRest         Boolean
+  includesHomeworkHelp Boolean
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  studentServices StudentService[]
+}
+
+model StudentService {
+  id            String        @id @default(cuid())
+  studentId     String
+  serviceTypeId String
+  billingCycle  BillingCycle
+  validFrom     DateTime
+  validTo       DateTime
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  student     Student     @relation(fields: [studentId], references: [id])
+  serviceType ServiceType @relation(fields: [serviceTypeId], references: [id])
+}
+
+model AttendanceRecord {
+  id        String           @id @default(cuid())
+  campusId  String
+  studentId String
+  status    AttendanceStatus
+  photoUrl  String?
+  occurredAt DateTime
+  createdAt DateTime         @default(now())
+
+  campus  Campus  @relation(fields: [campusId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+}
+
+model TeacherAttendance {
+  id        String                  @id @default(cuid())
+  campusId  String
+  teacherId String
+  status    TeacherAttendanceStatus
+  occurredAt DateTime
+  note      String?
+  createdAt DateTime                @default(now())
+
+  campus  Campus @relation(fields: [campusId], references: [id])
+  teacher User   @relation(fields: [teacherId], references: [id])
+}
+
+model LeaveRequest {
+  id        String             @id @default(cuid())
+  campusId  String
+  studentId String
+  type      String
+  reason    String?
+  startsAt  DateTime
+  endsAt    DateTime
+  mealAffected Boolean         @default(false)
+  status    LeaveRequestStatus @default(pending)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  campus  Campus  @relation(fields: [campusId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+}
+
+model Notification {
+  id            String             @id @default(cuid())
+  campusId      String?
+  studentId     String?
+  guardianId    String?
+  recipientUserId String?
+  title         String
+  content       String
+  status        NotificationStatus @default(pending)
+  sentAt        DateTime?
+  failReason    String?
+  createdAt     DateTime           @default(now())
+
+  campus        Campus?   @relation(fields: [campusId], references: [id])
+  student       Student?  @relation(fields: [studentId], references: [id])
+  guardian      Guardian? @relation(fields: [guardianId], references: [id])
+  recipientUser User?     @relation(fields: [recipientUserId], references: [id])
+}
+
+model HomeworkReview {
+  id             String         @id @default(cuid())
+  campusId       String
+  studentId      String
+  teacherId      String
+  classId        String?
+  subject        String?
+  status         HomeworkStatus @default(pending)
+  teacherComment String?
+  aiSummary      String?
+  publishedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  campus  Campus                @relation(fields: [campusId], references: [id])
+  student Student               @relation(fields: [studentId], references: [id])
+  teacher User                  @relation(fields: [teacherId], references: [id])
+  images  HomeworkReviewImage[]
+  mistakes MistakeBookItem[]
+}
+
+model HomeworkReviewImage {
+  id        String            @id @default(cuid())
+  reviewId  String
+  type      HomeworkImageType
+  url       String
+  sortOrder Int               @default(0)
+  createdAt DateTime          @default(now())
+
+  review HomeworkReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id          String         @id @default(cuid())
+  campusId    String
+  studentId   String
+  teacherId   String
+  behavior    String
+  homework    String
+  knowledge   String
+  status      FeedbackStatus @default(draft)
+  publishedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  campus  Campus  @relation(fields: [campusId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+  teacher User    @relation(fields: [teacherId], references: [id])
+}
+
+model MistakeBookItem {
+  id          String        @id @default(cuid())
+  campusId    String
+  studentId   String
+  reviewId    String?
+  subject     String?
+  knowledgePoint String?
+  question    String?
+  answer      String?
+  explanation String?
+  status      MistakeStatus @default(candidate)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  campus  Campus          @relation(fields: [campusId], references: [id])
+  student Student         @relation(fields: [studentId], references: [id])
+  review  HomeworkReview? @relation(fields: [reviewId], references: [id])
+}
+
+model AiActionLog {
+  id          String      @id @default(cuid())
+  campusId    String?
+  actorUserId String?
+  rawInput    String
+  intent      String?
+  riskLevel   AiRiskLevel @default(low)
+  confidence  Float?
+  confirmedAt DateTime?
+  result      String?
+  error       String?
+  createdAt   DateTime    @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  campusId    String?
+  actorUserId String?
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  campus Campus? @relation(fields: [campusId], references: [id])
+  actor  User?   @relation(fields: [actorUserId], references: [id])
+}
