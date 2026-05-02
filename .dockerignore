@@ -1,0 +1,12 @@
+.git
+.pnpm-store
+node_modules
+**/node_modules
+**/.next
+**/dist
+logs
+storage
+backups
+nginx/certs
+_*
+*.log

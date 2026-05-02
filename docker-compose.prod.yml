@@ -1,5 +1,10 @@
 services:
   web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api}
     image: afterclass-web:latest
     restart: unless-stopped
     env_file:
@@ -10,6 +15,9 @@ services:
       - afterclass
 
   api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
     image: afterclass-api:latest
     restart: unless-stopped
     env_file:
@@ -23,6 +31,7 @@ services:
         condition: service_started
     volumes:
       - ./logs/api:/app/logs
+      - ./storage:/app/storage
     networks:
       - afterclass
 
@@ -68,6 +77,9 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     networks:
       - afterclass
 
