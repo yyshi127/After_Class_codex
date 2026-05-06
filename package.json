@@ -8,6 +8,7 @@
     "dev:web": "pnpm --filter @afterclass/web dev",
     "dev:api": "pnpm --filter @afterclass/api dev",
     "build": "pnpm -r build",
+    "check": "pnpm lint && pnpm typecheck && pnpm smoke:api",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
