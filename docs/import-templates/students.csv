@@ -1,0 +1,2 @@
+external_id,campus_external_id,class_external_id,name,gender,grade,school_name,id_card_no,guardian_name,guardian_phone,guardian_relation,service_type_code,billing_cycle,valid_from,valid_to,status
+student-li,campus-main,class-evening-1,李明,男,三年级,星河小学,110101201501010028,李明妈妈,13800000002,母亲,homework-only,monthly,2026-05-01,2026-05-31,active
