@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Net.Http
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $startedApi = $null
 
@@ -64,11 +65,33 @@ function Invoke-Sql {
   $Sql | docker exec -i afterclass-postgres psql -U afterclass -d afterclass | Out-Null
 }
 
+function Invoke-SpoofedImageUpload {
+  param([string]$Token, [string]$CampusId, [string]$StudentId)
+  $client = [System.Net.Http.HttpClient]::new()
+  $client.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $Token)
+  $form = [System.Net.Http.MultipartFormDataContent]::new()
+  $fileContent = [System.Net.Http.ByteArrayContent]::new([System.Text.Encoding]::UTF8.GetBytes("not a real image"))
+  $fileContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("image/png")
+  $form.Add($fileContent, "file", "spoof.png")
+  $form.Add([System.Net.Http.StringContent]::new($CampusId), "campusId")
+  $form.Add([System.Net.Http.StringContent]::new($StudentId), "studentId")
+  $form.Add([System.Net.Http.StringContent]::new("homework_original"), "type")
+  try {
+    $response = $client.PostAsync("$ApiBaseUrl/files/images", $form).GetAwaiter().GetResult()
+    return $response
+  } finally {
+    $form.Dispose()
+    $client.Dispose()
+  }
+}
+
 $attendanceId = $null
 $teacherAttendanceId = $null
 $studentServiceId = $null
 $aiLogId = $null
 $unauthorizedCampusId = "smoke_unauthorized_campus"
+$signedFileId = "smoke_signed_file"
+$unauthorizedFileId = "smoke_unauthorized_file"
 
 try {
   Ensure-Api
@@ -126,6 +149,26 @@ try {
   $serviceSummary = Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/service-summary?studentId=$($students[0].id)" -Headers $teacherHeaders
   Assert-True ($serviceSummary.validTo.Length -gt 0) "service summary should expose validTo"
 
+  $spoofedUpload = Invoke-SpoofedImageUpload -Token $teacherLogin.accessToken -CampusId $teacherLogin.user.campuses[0].id -StudentId $students[0].id
+  Assert-True (-not $spoofedUpload.IsSuccessStatusCode) "spoofed image upload should fail"
+
+  Invoke-Sql @"
+delete from "FileObject" where id in ('$signedFileId', '$unauthorizedFileId');
+insert into "FileObject" (id, "campusId", "studentId", "uploadedById", "objectKey", bucket, "mimeType", size, type, "businessType", "businessId", "originalName", "createdAt")
+values ('$signedFileId', '$($teacherLogin.user.campuses[0].id)', null, '$($teacherLogin.user.id)', 'smoke/signed.png', 'afterclass', 'image/png', 8, 'homework_original', 'smoke', null, 'signed.png', now());
+insert into "FileObject" (id, "campusId", "studentId", "uploadedById", "objectKey", bucket, "mimeType", size, type, "businessType", "businessId", "originalName", "createdAt")
+values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.user.id)', 'smoke/unauthorized.png', 'afterclass', 'image/png', 8, 'homework_original', 'smoke', null, 'unauthorized.png', now());
+"@
+  $signed = Invoke-Json -Method Get -Uri "$ApiBaseUrl/files/$signedFileId/signed-url" -Headers $teacherHeaders
+  Assert-True ($signed.expiresIn -eq 300) "signed URL should expire in 300 seconds"
+  $imageDenied = $false
+  try {
+    Invoke-Json -Method Get -Uri "$ApiBaseUrl/files/$unauthorizedFileId/signed-url" -Headers $teacherHeaders | Out-Null
+  } catch {
+    $imageDenied = $true
+  }
+  Assert-True $imageDenied "teacher should not access image from unauthorized campus"
+
   $teacherAttendance = Invoke-Json -Method Post -Uri "$ApiBaseUrl/attendance/teachers/check-in" -Headers $teacherHeaders -Body @{
     campusId = $teacherLogin.user.campuses[0].id
     note     = "smoke teacher attendance"
@@ -173,6 +216,7 @@ try {
   Write-Host "smoke-api passed"
 } finally {
   Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId
+  Invoke-Sql "delete from `"AuditLog`" where `"targetId`" in ('$signedFileId', '$unauthorizedFileId'); delete from `"FileObject`" where id in ('$signedFileId', '$unauthorizedFileId');"
   Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId';"
   if ($startedApi) {
     $port = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | Select-Object -First 1
