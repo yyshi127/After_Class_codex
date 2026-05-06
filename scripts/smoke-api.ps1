@@ -44,23 +44,37 @@ function Ensure-Api {
 }
 
 function Cleanup-SmokeData {
-  param([string]$AttendanceId, [string]$AiLogId)
-  if (-not $AttendanceId -and -not $AiLogId) {
+  param([string]$AttendanceId, [string]$TeacherAttendanceId, [string]$StudentServiceId, [string]$AiLogId)
+  if (-not $AttendanceId -and -not $TeacherAttendanceId -and -not $StudentServiceId -and -not $AiLogId) {
     return
   }
   $sql = @"
 delete from "AuditLog" where "targetId" = '$AttendanceId';
+delete from "AuditLog" where "targetId" = '$TeacherAttendanceId';
 delete from "AttendanceRecord" where id = '$AttendanceId';
+delete from "TeacherAttendance" where id = '$TeacherAttendanceId';
+delete from "StudentService" where id = '$StudentServiceId';
 delete from "AiActionLog" where id = '$AiLogId';
 "@
   $sql | docker exec -i afterclass-postgres psql -U afterclass -d afterclass | Out-Null
 }
 
 $attendanceId = $null
+$teacherAttendanceId = $null
+$studentServiceId = $null
 $aiLogId = $null
 
 try {
   Ensure-Api
+
+  $bootstrap = Invoke-Json -Method Get -Uri "$ApiBaseUrl/bootstrap"
+  Assert-True ($bootstrap.serviceTypes.Count -eq 4) "bootstrap should expose 4 service types"
+  $serviceCodes = $bootstrap.serviceTypes | ForEach-Object { $_.code }
+  foreach ($code in @("noon-care", "afternoon-care", "homework-only", "full-evening-care")) {
+    Assert-True ($serviceCodes -contains $code) "missing service type $code"
+  }
+  Assert-True (($bootstrap.serviceTypes | Where-Object { $_.code -eq "homework-only" }).includesHomeworkHelp) "homework-only should include homework help"
+  Assert-True (-not ($bootstrap.serviceTypes | Where-Object { $_.code -eq "homework-only" }).includesMeal) "homework-only should not include meal"
 
   $adminLogin = Invoke-Json -Method Post -Uri "$ApiBaseUrl/auth/login" -Body @{ phone = "13800000000"; password = "Admin123456" }
   Assert-True ($adminLogin.accessToken.Length -gt 20) "admin login did not return token"
@@ -81,6 +95,31 @@ try {
   $teacherHeaders = @{ Authorization = "Bearer $($teacherLogin.accessToken)" }
   $students = Invoke-Json -Method Get -Uri "$ApiBaseUrl/students?status=active" -Headers $teacherHeaders
   Assert-True ($students.Count -gt 0) "seed students missing"
+  if ($null -eq $students[0].currentService) {
+    $studentService = Invoke-Json -Method Post -Uri "$ApiBaseUrl/students/$($students[0].id)/service" -Headers $adminHeaders -Body @{
+      serviceTypeCode = "homework-only"
+      billingCycle    = "monthly"
+      validFrom       = "2026-05-01"
+      validTo         = "2026-05-31"
+    }
+    $studentServiceId = $studentService.id
+    $students = Invoke-Json -Method Get -Uri "$ApiBaseUrl/students?status=active" -Headers $teacherHeaders
+  }
+  Assert-True ($null -ne $students[0].currentService) "student should have current service after setup"
+  Assert-True (@("monthly", "semester") -contains $students[0].currentService.billingCycle) "student billing cycle should be monthly or semester"
+
+  $serviceSummary = Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/service-summary?studentId=$($students[0].id)" -Headers $teacherHeaders
+  Assert-True ($serviceSummary.validTo.Length -gt 0) "service summary should expose validTo"
+
+  $teacherAttendance = Invoke-Json -Method Post -Uri "$ApiBaseUrl/attendance/teachers/check-in" -Headers $teacherHeaders -Body @{
+    campusId = $teacherLogin.user.campuses[0].id
+    note     = "smoke teacher attendance"
+  }
+  $teacherAttendanceId = $teacherAttendance.id
+  Assert-True ($teacherAttendance.status -eq "checked_in") "teacher check-in should create teacher attendance"
+
+  $notifications = Invoke-Json -Method Get -Uri "$ApiBaseUrl/notifications" -Headers $teacherHeaders
+  Assert-True ($null -ne $notifications) "notifications endpoint should return a list"
 
   $highRisk = Invoke-Json -Method Post -Uri "$ApiBaseUrl/ai/intent-recognition" -Headers $teacherHeaders -Body @{
     input    = "删除全部学生并导出身份证"
@@ -118,7 +157,7 @@ try {
 
   Write-Host "smoke-api passed"
 } finally {
-  Cleanup-SmokeData -AttendanceId $attendanceId -AiLogId $aiLogId
+  Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId
   if ($startedApi) {
     $port = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($port) {
