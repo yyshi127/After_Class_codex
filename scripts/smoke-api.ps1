@@ -59,13 +59,20 @@ delete from "AiActionLog" where id = '$AiLogId';
   $sql | docker exec -i afterclass-postgres psql -U afterclass -d afterclass | Out-Null
 }
 
+function Invoke-Sql {
+  param([string]$Sql)
+  $Sql | docker exec -i afterclass-postgres psql -U afterclass -d afterclass | Out-Null
+}
+
 $attendanceId = $null
 $teacherAttendanceId = $null
 $studentServiceId = $null
 $aiLogId = $null
+$unauthorizedCampusId = "smoke_unauthorized_campus"
 
 try {
   Ensure-Api
+  Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId'; insert into `"Campus`" (id, name, address, `"createdAt`", `"updatedAt`") values ('$unauthorizedCampusId', 'Smoke Unauthorized Campus', null, now(), now());"
 
   $bootstrap = Invoke-Json -Method Get -Uri "$ApiBaseUrl/bootstrap"
   Assert-True ($bootstrap.serviceTypes.Count -eq 4) "bootstrap should expose 4 service types"
@@ -93,6 +100,14 @@ try {
 
   $teacherLogin = Invoke-Json -Method Post -Uri "$ApiBaseUrl/auth/login" -Body @{ phone = "13800000001"; password = "Admin123456" }
   $teacherHeaders = @{ Authorization = "Bearer $($teacherLogin.accessToken)" }
+  $campusDenied = $false
+  try {
+    Invoke-Json -Method Get -Uri "$ApiBaseUrl/access/campus-check?campusId=$unauthorizedCampusId" -Headers $teacherHeaders | Out-Null
+  } catch {
+    $campusDenied = $true
+  }
+  Assert-True $campusDenied "teacher should not access unauthorized campus"
+
   $students = Invoke-Json -Method Get -Uri "$ApiBaseUrl/students?status=active" -Headers $teacherHeaders
   Assert-True ($students.Count -gt 0) "seed students missing"
   if ($null -eq $students[0].currentService) {
@@ -158,6 +173,7 @@ try {
   Write-Host "smoke-api passed"
 } finally {
   Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId
+  Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId';"
   if ($startedApi) {
     $port = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($port) {
