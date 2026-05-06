@@ -12,6 +12,7 @@ import { FilesModule } from "./files/files.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { FinanceModule } from "./finance/finance.module";
 import { LeaveModule } from "./leave/leave.module";
+import { AiModule } from "./ai/ai.module";
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { LeaveModule } from "./leave/leave.module";
     NotificationsModule,
     FinanceModule,
     LeaveModule,
+    AiModule,
   ],
   controllers: [AppController],
 })
