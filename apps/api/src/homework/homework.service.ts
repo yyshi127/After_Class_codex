@@ -139,6 +139,21 @@ export class HomeworkService {
         },
       });
 
+      await tx.aiActionLog.updateMany({
+        where: {
+          intent: "homework_image_review",
+          entities: {
+            path: ["reviewId"],
+            equals: review.id,
+          },
+        },
+        data: {
+          confirmedByUserId: user.id,
+          confirmedAt: new Date(),
+          result: "homework_image_suggestion_confirmed",
+        },
+      });
+
       return tx.homeworkReview.update({
         where: { id: reviewId },
         data: {
