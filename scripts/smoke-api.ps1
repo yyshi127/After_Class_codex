@@ -165,6 +165,12 @@ function Invoke-Sql {
   $Sql | docker exec -i afterclass-postgres psql -U afterclass -d afterclass | Out-Null
 }
 
+function Invoke-SqlScalar {
+  param([string]$Sql)
+  $result = $Sql | docker exec -i afterclass-postgres psql -U afterclass -d afterclass -t -A
+  return ($result | Select-Object -First 1).Trim()
+}
+
 function Invoke-SpoofedImageUpload {
   param([string]$Token, [string]$CampusId, [string]$StudentId)
   $client = [System.Net.Http.HttpClient]::new()
@@ -277,6 +283,8 @@ try {
     $campusDenied = $true
   }
   Assert-True $campusDenied "teacher should not access unauthorized campus"
+  $campusDeniedAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'access.campus_denied' and `"actorUserId`" = '$($teacherLogin.user.id)' and `"targetId`" = '$unauthorizedCampusId';")
+  Assert-True ($campusDeniedAuditCount -gt 0) "cross-campus denial should be audited"
 
   $createdClass = Invoke-Json -Method Post -Uri "$ApiBaseUrl/classes" -Headers $adminHeaders -Body @{
     campusId = $teacherLogin.user.campuses[0].id
@@ -316,6 +324,8 @@ try {
   Assert-True ($updatedStudent.name -eq "Smoke Student Updated") "admin should update student"
   $idCard = Invoke-Json -Method Get -Uri "$ApiBaseUrl/students/$studentCrudId/id-card" -Headers $adminHeaders
   Assert-True ($idCard.idCardNoFull -eq "110101201501010028") "admin should read full ID card"
+  $idCardAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'student.id_card_full_view' and `"actorUserId`" = '$($adminLogin.user.id)' and `"targetId`" = '$studentCrudId';")
+  Assert-True ($idCardAuditCount -gt 0) "full ID card view should be audited"
   $boundGuardian = Invoke-Json -Method Post -Uri "$ApiBaseUrl/students/$studentCrudId/guardians" -Headers $adminHeaders -Body @{
     name     = "Smoke Guardian"
     phone    = $guardianCrudPhone
@@ -357,6 +367,8 @@ values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.u
 "@
   $signed = Invoke-Json -Method Get -Uri "$ApiBaseUrl/files/$signedFileId/signed-url" -Headers $teacherHeaders
   Assert-True ($signed.expiresIn -eq 300) "signed URL should expire in 300 seconds"
+  $fileAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'file.signed_url_issued' and `"actorUserId`" = '$($teacherLogin.user.id)' and `"targetId`" = '$signedFileId';")
+  Assert-True ($fileAuditCount -gt 0) "image signed URL access should be audited"
   $imageDenied = $false
   try {
     Invoke-Json -Method Get -Uri "$ApiBaseUrl/files/$unauthorizedFileId/signed-url" -Headers $teacherHeaders | Out-Null
@@ -398,6 +410,11 @@ values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.u
   }
   Assert-True $guardianSettlementDenied "guardian should not access class settlements"
 
+  $adminBillingRecords = Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/billing-records?studentId=$($smokeStudent.id)" -Headers $adminHeaders
+  Assert-True ($null -ne $adminBillingRecords) "admin should access billing records"
+  $billingAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'finance.billing_records_view' and `"actorUserId`" = '$($adminLogin.user.id)' and `"targetId`" = '$($smokeStudent.id)';")
+  Assert-True ($billingAuditCount -gt 0) "billing records view should be audited"
+
   Invoke-Sql @"
 delete from "BillingRecord" where id = '$billingRecordId';
 delete from "AttendanceRecord" where id in ('$($settlementAttendanceIds[0])', '$($settlementAttendanceIds[1])');
@@ -431,6 +448,8 @@ values ('$billingRecordId', '$($teacherLogin.user.campuses[0].id)', '$($smokeStu
   Assert-True ($settlement.grossProfitCents -eq 34000) "class settlement should calculate gross profit"
   $settlements = Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/class-settlements?campusId=$($teacherLogin.user.campuses[0].id)&classId=$($smokeStudent.class.id)&periodStart=2026-04-01T00:00:00.000Z&periodEnd=2026-04-30T23:59:59.000Z" -Headers $adminHeaders
   Assert-True (@($settlements | Where-Object { $_.id -eq $classSettlementId }).Count -eq 1) "admin should list generated class settlement"
+  $settlementAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'finance.class_settlements_view' and `"actorUserId`" = '$($adminLogin.user.id)' and `"targetId`" = '$($smokeStudent.class.id)';")
+  Assert-True ($settlementAuditCount -gt 0) "class settlement view should be audited"
 
   $highRisk = Invoke-Json -Method Post -Uri "$ApiBaseUrl/ai/intent-recognition" -Headers $teacherHeaders -Body @{
     input    = "删除全部学生并导出身份证"
@@ -538,7 +557,7 @@ values ('$billingRecordId', '$($teacherLogin.user.campuses[0].id)', '$($smokeStu
   Write-Host "smoke-api passed"
 } finally {
   Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId -SettlementAttendanceIds $settlementAttendanceIds -BillingRecordId $billingRecordId -TeacherFeeConfigId $teacherFeeConfigId -ClassSettlementId $classSettlementId -ClassId $classCrudId -StudentId $studentCrudId -GuardianPhone $guardianCrudPhone -HomeworkReviewId $homeworkReviewId -FeedbackId $feedbackId -MistakeId $mistakeId -SimilarQuestionIds $similarQuestionIds -PracticeSheetId $practiceSheetId -NotificationStudentId $notificationStudentId -NotificationCreatedAfter $notificationCreatedAfter
-  Invoke-Sql "delete from `"AuditLog`" where `"targetId`" in ('$signedFileId', '$unauthorizedFileId'); delete from `"FileObject`" where id in ('$signedFileId', '$unauthorizedFileId');"
+  Invoke-Sql "delete from `"AuditLog`" where `"targetId`" in ('$signedFileId', '$unauthorizedFileId', '$unauthorizedCampusId'); delete from `"FileObject`" where id in ('$signedFileId', '$unauthorizedFileId');"
   Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId';"
   if ($startedApi) {
     $port = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | Select-Object -First 1

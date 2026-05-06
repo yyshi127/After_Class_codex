@@ -17,12 +17,12 @@ export class FinanceService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  listBillingRecords(user: AuthenticatedUser, campusId?: string, studentId?: string) {
+  async listBillingRecords(user: AuthenticatedUser, campusId?: string, studentId?: string) {
     this.assertStaff(user);
     const campusIds = campusId ? [campusId] : user.campusIds;
     if (campusId) this.accessService.assertCampusAccess(user, campusId);
 
-    return this.prisma.billingRecord.findMany({
+    const records = await this.prisma.billingRecord.findMany({
       where: {
         campusId: { in: campusIds },
         studentId: studentId || undefined,
@@ -35,6 +35,23 @@ export class FinanceService {
       orderBy: { periodEnd: "desc" },
       take: 100,
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: campusId ?? null,
+        actorUserId: user.id,
+        action: "finance.billing_records_view",
+        targetType: studentId ? "student" : "billing_record",
+        targetId: studentId ?? null,
+        metadata: {
+          campusIds,
+          recordCount: records.length,
+          role: user.role,
+        },
+      },
+    });
+
+    return records;
   }
 
   async createBillingRecord(user: AuthenticatedUser, dto: CreateBillingRecordDto) {
@@ -48,7 +65,7 @@ export class FinanceService {
     const balanceCents = Math.max(dto.amountDueCents - dto.amountPaidCents, 0);
     const status = this.getBillingStatus(dto.amountDueCents, dto.amountPaidCents);
 
-    return this.prisma.billingRecord.create({
+    const record = await this.prisma.billingRecord.create({
       data: {
         campusId: dto.campusId,
         studentId: dto.studentId,
@@ -64,6 +81,24 @@ export class FinanceService {
         note: dto.note,
       },
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: dto.campusId,
+        actorUserId: user.id,
+        action: "finance.billing_record_create",
+        targetType: "billing_record",
+        targetId: record.id,
+        metadata: {
+          studentId: dto.studentId,
+          amountDueCents: dto.amountDueCents,
+          amountPaidCents: dto.amountPaidCents,
+          billingCycle: dto.billingCycle,
+        },
+      },
+    });
+
+    return record;
   }
 
   async getServiceSummary(user: AuthenticatedUser, studentId: string) {
@@ -193,12 +228,12 @@ export class FinanceService {
     });
   }
 
-  listClassSettlements(user: AuthenticatedUser, campusId?: string, classId?: string, periodStart?: string, periodEnd?: string) {
+  async listClassSettlements(user: AuthenticatedUser, campusId?: string, classId?: string, periodStart?: string, periodEnd?: string) {
     this.assertAdmin(user);
     const campusIds = campusId ? [campusId] : user.campusIds;
     if (campusId) this.accessService.assertCampusAccess(user, campusId);
 
-    return this.prisma.classSettlement.findMany({
+    const settlements = await this.prisma.classSettlement.findMany({
       where: {
         campusId: { in: campusIds },
         classId: classId || undefined,
@@ -212,6 +247,24 @@ export class FinanceService {
       orderBy: { periodEnd: "desc" },
       take: 100,
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: campusId ?? null,
+        actorUserId: user.id,
+        action: "finance.class_settlements_view",
+        targetType: classId ? "class" : "class_settlement",
+        targetId: classId ?? null,
+        metadata: {
+          campusIds,
+          settlementCount: settlements.length,
+          periodStart,
+          periodEnd,
+        },
+      },
+    });
+
+    return settlements;
   }
 
   async generateClassSettlement(user: AuthenticatedUser, dto: GenerateClassSettlementDto) {
