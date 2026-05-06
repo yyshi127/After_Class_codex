@@ -108,7 +108,23 @@ export class FilesService implements OnModuleInit {
       throw new NotFoundException("File not found");
     }
     await this.assertFileReadable(user, record);
-    return { id: record.id, signedUrl: await this.signObject(record.objectKey), expiresIn: 300 };
+    const signedUrl = await this.signObject(record.objectKey);
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: record.campusId,
+        actorUserId: user.id,
+        action: "file.signed_url_issued",
+        targetType: "file_object",
+        targetId: record.id,
+        metadata: {
+          studentId: record.studentId,
+          fileType: record.type,
+          businessType: record.businessType,
+          businessId: record.businessId,
+        },
+      },
+    });
+    return { id: record.id, signedUrl, expiresIn: 300 };
   }
 
   private async assertFileReadable(user: AuthenticatedUser, record: { campusId: string; studentId: string | null }) {

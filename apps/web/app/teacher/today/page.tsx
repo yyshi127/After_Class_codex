@@ -16,6 +16,7 @@ import {
   listTeacherAttendance,
   teacherCheckIn,
   teacherCheckOut,
+  uploadImage,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
 
@@ -41,6 +42,7 @@ export default function TeacherTodayPage() {
   const [teacherAttendance, setTeacherAttendance] = useState<TeacherAttendanceItem[]>([]);
   const [campusId, setCampusId] = useState("");
   const [classId, setClassId] = useState("");
+  const [checkInFiles, setCheckInFiles] = useState<Record<string, File | null>>({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -106,10 +108,23 @@ export default function TeacherTodayPage() {
   }
 
   async function onCheckInStudent(student: StudentItem) {
+    const file = checkInFiles[student.id];
+    let photoUrl = `s3://dev/checkin/${student.id}-${Date.now()}.jpg`;
+    if (file) {
+      const uploaded = await uploadImage({
+        file,
+        campusId: selectedCampusId,
+        studentId: student.id,
+        type: "checkin_photo",
+        businessType: "attendance_checkin",
+      });
+      photoUrl = `file:${uploaded.id}`;
+    }
     await checkInStudent({
       studentId: student.id,
-      photoUrl: `s3://dev/checkin/${student.id}-${Date.now()}.jpg`,
+      photoUrl,
     });
+    setCheckInFiles((prev) => ({ ...prev, [student.id]: null }));
     setMessage(`${student.name} 已到校，已通知家长`);
     await reload();
   }
@@ -218,14 +233,25 @@ export default function TeacherTodayPage() {
                         </div>
                       ) : null}
                     </div>
-                    <button
-                      onClick={() => void onCheckInStudent(student)}
-                      disabled={status === "checked_in"}
-                      className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic disabled:bg-serenity-muted"
-                    >
-                      <Camera className="h-4 w-4" />
-                      {status === "checked_in" ? "已到校" : "拍照签到"}
-                    </button>
+                    <div className="grid gap-2">
+                      <label className="rounded-2xl bg-white/70 px-3 py-2 text-xs text-serenity-muted shadow-insetSoft">
+                        <input
+                          className="w-full text-xs file:mr-2 file:rounded-xl file:border-0 file:bg-serenity-blue file:px-2 file:py-1 file:text-white"
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={status === "checked_in"}
+                          onChange={(event) => setCheckInFiles((prev) => ({ ...prev, [student.id]: event.target.files?.[0] ?? null }))}
+                        />
+                      </label>
+                      <button
+                        onClick={() => void onCheckInStudent(student)}
+                        disabled={status === "checked_in"}
+                        className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic disabled:bg-serenity-muted"
+                      >
+                        <Camera className="h-4 w-4" />
+                        {status === "checked_in" ? "已到校" : checkInFiles[student.id] ? "上传照片并签到" : "拍照签到"}
+                      </button>
+                    </div>
                   </article>
                 );
               })}
