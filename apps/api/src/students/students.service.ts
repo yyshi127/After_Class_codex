@@ -178,6 +178,34 @@ export class StudentsService {
     });
   }
 
+  async remove(user: AuthenticatedUser, id: string) {
+    const existing = await this.prisma.student.findFirst({
+      where: this.accessService.buildStudentScopeWhere(user, { studentId: id }),
+    });
+    if (!existing) {
+      throw new NotFoundException("Student not found");
+    }
+
+    await this.assertTeacherClassWritable(user, existing.classId ?? undefined, existing.campusId);
+    const student = await this.prisma.student.update({
+      where: { id },
+      data: { status: "inactive" },
+      select: { id: true, status: true },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: existing.campusId,
+        actorUserId: user.id,
+        action: "student.deactivate",
+        targetType: "student",
+        targetId: existing.id,
+      },
+    });
+
+    return student;
+  }
+
   async getIdCard(user: AuthenticatedUser, id: string) {
     const student = await this.prisma.student.findFirst({
       where: this.accessService.buildStudentScopeWhere(user, { studentId: id }),
