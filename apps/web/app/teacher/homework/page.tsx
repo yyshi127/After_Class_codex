@@ -402,6 +402,16 @@ export default function TeacherHomeworkPage() {
                       <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">{statusLabels[item.status]}</span>
                     </div>
                     <div className="mt-2 text-sm leading-6 text-serenity-muted">{item.teacherComment || "暂无点评"}</div>
+                    {item.aiSummary ? <div className="mt-2 rounded-2xl bg-white/70 p-3 text-xs leading-5 text-serenity-muted">AI suggestion: {item.aiSummary}</div> : null}
+                    {item.images?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-serenity-muted">
+                        {item.images.map((image) => (
+                          <span key={image.id} className="rounded-full bg-white/70 px-3 py-1">
+                            {image.type}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="mt-3 text-xs text-serenity-muted">图片 {item.images?.length ?? 0} 张 · {new Date(item.createdAt).toLocaleString("zh-CN")}</div>
                   </article>
                 ))}

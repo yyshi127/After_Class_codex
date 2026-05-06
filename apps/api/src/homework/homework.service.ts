@@ -43,26 +43,65 @@ export class HomeworkService {
   async createReview(user: AuthenticatedUser, dto: CreateHomeworkReviewDto) {
     this.assertTeacherLike(user);
     const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
+    const aiSummary = "AI 已完成作业图片初步识别：疑似 1 处计算或审题错误，建议老师查看圈错建议后确认。";
+    const rawInput = `homework image review:${dto.originalImageUrl}`;
+    const promptTokenCount = this.estimateTokenCount(rawInput);
+    const completionTokenCount = this.estimateTokenCount(aiSummary);
 
-    return this.prisma.homeworkReview.create({
-      data: {
-        campusId: student.campusId,
-        studentId: student.id,
-        teacherId: user.id,
-        classId: student.classId,
-        subject: dto.subject,
-        status: HomeworkStatus.pending,
-        teacherComment: dto.teacherComment,
-        aiSummary: "AI 圈错建议待生成，第一版由老师确认后发布。",
-        images: {
-          create: {
-            type: HomeworkImageType.original,
-            url: dto.originalImageUrl,
-            sortOrder: 0,
+    return this.prisma.$transaction(async (tx) => {
+      const review = await tx.homeworkReview.create({
+        data: {
+          campusId: student.campusId,
+          studentId: student.id,
+          teacherId: user.id,
+          classId: student.classId,
+          subject: dto.subject,
+          status: HomeworkStatus.pending,
+          teacherComment: dto.teacherComment,
+          aiSummary,
+          images: {
+            create: [
+              {
+                type: HomeworkImageType.original,
+                url: dto.originalImageUrl,
+                sortOrder: 0,
+              },
+              {
+                type: HomeworkImageType.ai_marked,
+                url: dto.originalImageUrl,
+                sortOrder: 1,
+              },
+            ],
           },
         },
-      },
-      include: { images: true },
+        include: { images: true },
+      });
+
+      await tx.aiActionLog.create({
+        data: {
+          campusId: student.campusId,
+          actorUserId: user.id,
+          rawInput,
+          intent: "homework_image_review",
+          entities: {
+            studentId: student.id,
+            reviewId: review.id,
+            originalImageUrl: dto.originalImageUrl,
+            ocrText: "MVP mock OCR：作业图片文字待老师核对。",
+            suggestedRegions: [{ x: 0.58, y: 0.42, width: 0.18, height: 0.12, errorType: "疑似计算错误" }],
+          },
+          riskLevel: AiRiskLevel.low,
+          confidence: 0.72,
+          promptTokenCount,
+          completionTokenCount,
+          totalTokenCount: promptTokenCount + completionTokenCount,
+          costCents: 0,
+          requiresConfirmation: true,
+          result: "homework_image_suggestion_generated",
+        },
+      });
+
+      return review;
     });
   }
 
