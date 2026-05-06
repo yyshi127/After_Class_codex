@@ -372,6 +372,10 @@ try {
   Assert-True ($idCard.idCardNoFull -eq "110101201501010028") "admin should read full ID card"
   $idCardAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'student.id_card_full_view' and `"actorUserId`" = '$($adminLogin.user.id)' and `"targetId`" = '$studentCrudId';")
   Assert-True ($idCardAuditCount -gt 0) "full ID card view should be audited"
+  $idCardExport = Invoke-WebRequest -Method Get -Uri "$ApiBaseUrl/students/id-cards/export?campusId=$campusCrudId&classId=$classCrudId" -Headers $adminHeaders -UseBasicParsing
+  Assert-True ($idCardExport.Content.Contains("110101201501010028")) "ID card export should include full ID card for admin"
+  $idCardExportAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'student.id_card_export' and `"actorUserId`" = '$($adminLogin.user.id)' and `"targetId`" = '$classCrudId';")
+  Assert-True ($idCardExportAuditCount -gt 0) "ID card export should be audited"
   $boundGuardian = Invoke-Json -Method Post -Uri "$ApiBaseUrl/students/$studentCrudId/guardians" -Headers $adminHeaders -Body @{
     name     = "Smoke Guardian"
     phone    = $guardianCrudPhone

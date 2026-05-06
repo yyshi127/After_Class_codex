@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
+import type { Response } from "express";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -24,6 +25,20 @@ export class StudentsController {
     @Query("status") status?: string,
   ) {
     return this.studentsService.list(user, campusId, classId, status);
+  }
+
+  @Roles(UserRole.admin)
+  @Get("id-cards/export")
+  async exportIdCards(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() response: Response,
+    @Query("campusId") campusId?: string,
+    @Query("classId") classId?: string,
+  ) {
+    const csv = await this.studentsService.exportIdCards(user, campusId, classId);
+    response.setHeader("Content-Type", "text/csv; charset=utf-8");
+    response.setHeader("Content-Disposition", "attachment; filename=\"student-id-cards.csv\"");
+    return response.send(csv);
   }
 
   @Roles(UserRole.admin)

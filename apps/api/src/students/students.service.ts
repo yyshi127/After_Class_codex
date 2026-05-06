@@ -242,6 +242,49 @@ export class StudentsService {
     };
   }
 
+  async exportIdCards(user: AuthenticatedUser, campusId?: string, classId?: string) {
+    const students = await this.prisma.student.findMany({
+      where: this.accessService.buildStudentScopeWhere(user, { campusId, classId }),
+      select: {
+        id: true,
+        campusId: true,
+        classId: true,
+        name: true,
+        idCardNoEncrypted: true,
+        campus: { select: { name: true } },
+        class: { select: { name: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 1000,
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: campusId ?? null,
+        actorUserId: user.id,
+        action: "student.id_card_export",
+        targetType: classId ? "class" : campusId ? "campus" : "student",
+        targetId: classId ?? campusId ?? null,
+        metadata: {
+          classId,
+          exportedCount: students.length,
+        },
+      },
+    });
+
+    const rows = [
+      ["student_id", "campus", "class", "name", "id_card_no"],
+      ...students.map((student) => [
+        student.id,
+        student.campus.name,
+        student.class?.name ?? "",
+        student.name,
+        decryptIdCard(student.idCardNoEncrypted) ?? "",
+      ]),
+    ];
+    return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
+  }
+
   async upsertService(user: AuthenticatedUser, id: string, dto: UpsertStudentServiceDto) {
     const student = await this.accessService.findAccessibleStudent(user, id);
     await this.assertTeacherClassWritable(user, student.classId ?? undefined, student.campusId);
@@ -422,4 +465,8 @@ function maskIdCard(value: string | null) {
     return "****";
   }
   return `${value.slice(0, 4)}**********${value.slice(-4)}`;
+}
+
+function csvCell(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
 }
