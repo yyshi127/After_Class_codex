@@ -3,6 +3,8 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/types";
 import { AttendanceService } from "./attendance.service";
+import { ManualStudentAttendanceDto } from "./dto/manual-student-attendance.dto";
+import { ManualTeacherAttendanceDto } from "./dto/manual-teacher-attendance.dto";
 import { StudentCheckInDto } from "./dto/student-check-in.dto";
 import { TeacherAttendanceDto } from "./dto/teacher-attendance.dto";
 
@@ -27,6 +29,11 @@ export class AttendanceController {
     return this.attendanceService.checkInStudent(user, dto);
   }
 
+  @Post("students/manual")
+  manualStudentAttendance(@CurrentUser() user: AuthenticatedUser, @Body() dto: ManualStudentAttendanceDto) {
+    return this.attendanceService.manualStudentAttendance(user, dto);
+  }
+
   @Get("teachers")
   listTeacherAttendance(@CurrentUser() user: AuthenticatedUser, @Query("campusId") campusId?: string) {
     return this.attendanceService.listTeacherAttendance(user, campusId);
@@ -40,5 +47,10 @@ export class AttendanceController {
   @Post("teachers/check-out")
   teacherCheckOut(@CurrentUser() user: AuthenticatedUser, @Body() dto: TeacherAttendanceDto) {
     return this.attendanceService.teacherCheckOut(user, dto);
+  }
+
+  @Post("teachers/manual")
+  manualTeacherAttendance(@CurrentUser() user: AuthenticatedUser, @Body() dto: ManualTeacherAttendanceDto) {
+    return this.attendanceService.manualTeacherAttendance(user, dto);
   }
 }

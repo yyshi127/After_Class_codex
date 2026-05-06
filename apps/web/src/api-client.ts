@@ -390,6 +390,18 @@ export function checkInStudent(payload: { studentId: string; photoUrl?: string }
   });
 }
 
+export function createManualStudentAttendance(payload: {
+  studentId: string;
+  status: StudentAttendanceItem["status"];
+  occurredAt: string;
+  photoUrl?: string;
+}) {
+  return apiRequest<StudentAttendanceItem>("/attendance/students/manual", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function listTeacherAttendance(campusId?: string) {
   const query = campusId ? `?campusId=${encodeURIComponent(campusId)}` : "";
   return apiRequest<TeacherAttendanceItem[]>(`/attendance/teachers${query}`);
@@ -404,6 +416,19 @@ export function teacherCheckIn(payload: { campusId: string; note?: string }) {
 
 export function teacherCheckOut(payload: { campusId: string; note?: string }) {
   return apiRequest<TeacherAttendanceItem>("/attendance/teachers/check-out", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createManualTeacherAttendance(payload: {
+  campusId: string;
+  teacherId: string;
+  status: TeacherAttendanceItem["status"];
+  occurredAt: string;
+  note?: string;
+}) {
+  return apiRequest<TeacherAttendanceItem>("/attendance/teachers/manual", {
     method: "POST",
     body: JSON.stringify(payload),
   });

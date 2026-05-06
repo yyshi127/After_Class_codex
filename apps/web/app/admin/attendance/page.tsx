@@ -10,6 +10,8 @@ import {
   StudentAttendanceItem,
   StudentItem,
   TeacherAttendanceItem,
+  createManualStudentAttendance,
+  createManualTeacherAttendance,
   listClasses,
   listNotifications,
   listStudentAttendance,
@@ -45,6 +47,18 @@ export default function AdminAttendancePage() {
   const [classId, setClassId] = useState("");
   const [serviceTypeId, setServiceTypeId] = useState("");
   const [retryingNotificationId, setRetryingNotificationId] = useState("");
+  const [studentManualForm, setStudentManualForm] = useState({
+    studentId: "",
+    status: "checked_in" as StudentAttendanceItem["status"],
+    occurredAt: localDateTimeValue(),
+    photoUrl: "",
+  });
+  const [teacherManualForm, setTeacherManualForm] = useState({
+    teacherId: "",
+    status: "checked_in" as TeacherAttendanceItem["status"],
+    occurredAt: localDateTimeValue(),
+    note: "管理员补签",
+  });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -104,6 +118,8 @@ export default function AdminAttendancePage() {
       setStudentAttendance(studentAttendanceRows);
       setTeacherAttendance(teacherAttendanceRows);
       setNotificationRows(notificationList);
+      setStudentManualForm((prev) => ({ ...prev, studentId: prev.studentId || studentRows[0]?.id || "" }));
+      setTeacherManualForm((prev) => ({ ...prev, teacherId: prev.teacherId || teacherOptionsFromClasses(classRows)[0]?.id || "" }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -131,6 +147,8 @@ export default function AdminAttendancePage() {
     [serviceTypeId, students],
   );
 
+  const teacherOptions = useMemo(() => teacherOptionsFromClasses(classes), [classes]);
+
   function latestArrivalNotification(studentId: string) {
     return notificationRows.find((item) => item.studentId === studentId && item.title === "孩子已到校");
   }
@@ -147,6 +165,31 @@ export default function AdminAttendancePage() {
     } finally {
       setRetryingNotificationId("");
     }
+  }
+
+  async function onCreateManualStudentAttendance() {
+    if (!studentManualForm.studentId) return;
+    await createManualStudentAttendance({
+      studentId: studentManualForm.studentId,
+      status: studentManualForm.status,
+      occurredAt: new Date(studentManualForm.occurredAt).toISOString(),
+      photoUrl: studentManualForm.photoUrl || undefined,
+    });
+    setMessage("学生考勤已补录，并写入审计日志");
+    await reload();
+  }
+
+  async function onCreateManualTeacherAttendance() {
+    if (!teacherManualForm.teacherId || !selectedCampusId) return;
+    await createManualTeacherAttendance({
+      campusId: selectedCampusId,
+      teacherId: teacherManualForm.teacherId,
+      status: teacherManualForm.status,
+      occurredAt: new Date(teacherManualForm.occurredAt).toISOString(),
+      note: teacherManualForm.note || undefined,
+    });
+    setMessage("老师考勤已补签，并写入审计日志");
+    await reload();
   }
 
   function logout() {
@@ -267,8 +310,69 @@ export default function AdminAttendancePage() {
           </aside>
         </section>
 
+        {user.role === "admin" ? (
+          <section className="grid gap-5 xl:grid-cols-2">
+            <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+              <h2 className="text-xl font-semibold">补录学生考勤</h2>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <select className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={studentManualForm.studentId} onChange={(event) => setStudentManualForm({ ...studentManualForm, studentId: event.target.value })}>
+                  <option value="">选择学生</option>
+                  {students.map((student) => <option key={student.id} value={student.id}>{student.name}</option>)}
+                </select>
+                <select className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={studentManualForm.status} onChange={(event) => setStudentManualForm({ ...studentManualForm, status: event.target.value as StudentAttendanceItem["status"] })}>
+                  <option value="checked_in">已到校</option>
+                  <option value="checked_out">已离校</option>
+                  <option value="leave">请假</option>
+                  <option value="absent">缺勤</option>
+                  <option value="pending">未到</option>
+                </select>
+                <input type="datetime-local" className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={studentManualForm.occurredAt} onChange={(event) => setStudentManualForm({ ...studentManualForm, occurredAt: event.target.value })} />
+                <input className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" placeholder="到托照片 URL，可选" value={studentManualForm.photoUrl} onChange={(event) => setStudentManualForm({ ...studentManualForm, photoUrl: event.target.value })} />
+              </div>
+              <button onClick={() => void onCreateManualStudentAttendance()} className="mt-4 rounded-2xl bg-serenity-blue px-4 py-3 text-sm font-semibold text-white shadow-neumorphic">
+                保存学生补录
+              </button>
+            </article>
+
+            <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+              <h2 className="text-xl font-semibold">补签老师考勤</h2>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <select className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={teacherManualForm.teacherId} onChange={(event) => setTeacherManualForm({ ...teacherManualForm, teacherId: event.target.value })}>
+                  <option value="">选择老师</option>
+                  {teacherOptions.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+                </select>
+                <select className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={teacherManualForm.status} onChange={(event) => setTeacherManualForm({ ...teacherManualForm, status: event.target.value as TeacherAttendanceItem["status"] })}>
+                  <option value="checked_in">上班签到</option>
+                  <option value="checked_out">下班签退</option>
+                </select>
+                <input type="datetime-local" className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={teacherManualForm.occurredAt} onChange={(event) => setTeacherManualForm({ ...teacherManualForm, occurredAt: event.target.value })} />
+                <input className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" placeholder="备注" value={teacherManualForm.note} onChange={(event) => setTeacherManualForm({ ...teacherManualForm, note: event.target.value })} />
+              </div>
+              <button onClick={() => void onCreateManualTeacherAttendance()} className="mt-4 rounded-2xl bg-serenity-blue px-4 py-3 text-sm font-semibold text-white shadow-neumorphic">
+                保存老师补签
+              </button>
+            </article>
+          </section>
+        ) : null}
+
         {message ? <div className="rounded-3xl bg-serenity-surface p-4 text-sm text-serenity-muted shadow-neumorphic">{message}</div> : null}
       </div>
     </main>
   );
+}
+
+function localDateTimeValue() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
+}
+
+function teacherOptionsFromClasses(classes: ClassItem[]) {
+  const map = new Map<string, { id: string; name: string; phone: string | null }>();
+  for (const item of classes) {
+    for (const row of item.teachers ?? []) {
+      map.set(row.teacher.id, row.teacher);
+    }
+  }
+  return Array.from(map.values());
 }

@@ -4,6 +4,8 @@ import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ManualStudentAttendanceDto } from "./dto/manual-student-attendance.dto";
+import { ManualTeacherAttendanceDto } from "./dto/manual-teacher-attendance.dto";
 import { StudentCheckInDto } from "./dto/student-check-in.dto";
 import { TeacherAttendanceDto } from "./dto/teacher-attendance.dto";
 
@@ -76,6 +78,44 @@ export class AttendanceService {
     return record;
   }
 
+  async manualStudentAttendance(user: AuthenticatedUser, dto: ManualStudentAttendanceDto) {
+    if (user.role !== UserRole.admin) {
+      throw new ForbiddenException("Only admin can manually adjust student attendance");
+    }
+
+    const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
+    const occurredAt = new Date(dto.occurredAt);
+    const record = await this.prisma.attendanceRecord.create({
+      data: {
+        campusId: student.campusId,
+        studentId: student.id,
+        status: dto.status,
+        photoUrl: dto.photoUrl,
+        occurredAt,
+      },
+      include: {
+        student: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: student.campusId,
+        actorUserId: user.id,
+        action: "attendance.student_manual_record",
+        targetType: "attendance_record",
+        targetId: record.id,
+        metadata: {
+          studentId: student.id,
+          status: dto.status,
+          occurredAt: occurredAt.toISOString(),
+        },
+      },
+    });
+
+    return record;
+  }
+
   listTeacherAttendance(user: AuthenticatedUser, campusId?: string) {
     const campusIds = campusId ? [campusId] : user.campusIds;
     if (campusId) {
@@ -102,6 +142,61 @@ export class AttendanceService {
 
   teacherCheckOut(user: AuthenticatedUser, dto: TeacherAttendanceDto) {
     return this.createTeacherAttendance(user, dto, TeacherAttendanceStatus.checked_out);
+  }
+
+  async manualTeacherAttendance(user: AuthenticatedUser, dto: ManualTeacherAttendanceDto) {
+    if (user.role !== UserRole.admin) {
+      throw new ForbiddenException("Only admin can manually adjust teacher attendance");
+    }
+
+    this.accessService.assertCampusAccess(user, dto.campusId);
+    const teacher = await this.prisma.user.findFirst({
+      where: {
+        id: dto.teacherId,
+        role: UserRole.teacher,
+        campusAccess: {
+          some: {
+            campusId: dto.campusId,
+          },
+        },
+      },
+      select: { id: true },
+    });
+    if (!teacher) {
+      throw new NotFoundException("Teacher not found");
+    }
+
+    const occurredAt = new Date(dto.occurredAt);
+    const record = await this.prisma.teacherAttendance.create({
+      data: {
+        campusId: dto.campusId,
+        teacherId: teacher.id,
+        status: dto.status,
+        occurredAt,
+        note: dto.note,
+      },
+      include: {
+        teacher: { select: { id: true, name: true, phone: true } },
+        campus: { select: { id: true, name: true } },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: dto.campusId,
+        actorUserId: user.id,
+        action: "attendance.teacher_manual_record",
+        targetType: "teacher_attendance",
+        targetId: record.id,
+        metadata: {
+          teacherId: teacher.id,
+          status: dto.status,
+          occurredAt: occurredAt.toISOString(),
+        },
+      },
+    });
+
+    return record;
   }
 
   private createTeacherAttendance(user: AuthenticatedUser, dto: TeacherAttendanceDto, status: TeacherAttendanceStatus) {

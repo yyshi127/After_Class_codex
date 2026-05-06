@@ -27,6 +27,11 @@ const attendanceLabels: Record<string, string> = {
   absent: "缺勤",
 };
 
+const billingCycleLabels: Record<string, string> = {
+  monthly: "月缴",
+  semester: "学期缴",
+};
+
 export default function TeacherTodayPage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -191,8 +196,27 @@ export default function TeacherTodayPage() {
                         <span className="text-lg font-semibold">{student.name}</span>
                         <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">{student.grade || "未填年级"}</span>
                         <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">{student.class?.name || "未分班"}</span>
+                        {student.currentService ? (
+                          <span className="rounded-full bg-serenity-blue px-3 py-1 text-xs font-semibold text-white">
+                            {student.currentService.serviceType.name}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">未配置托管</span>
+                        )}
                       </div>
                       <div className="mt-2 text-sm text-serenity-muted">{student.schoolName || "未填写学校"} · {attendanceLabels[status]}</div>
+                      {student.currentService ? (
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-serenity-muted">
+                          <span className="rounded-full bg-white/70 px-3 py-1">
+                            {billingCycleLabels[student.currentService.billingCycle]} · 有效期至 {formatDate(student.currentService.validTo)}
+                          </span>
+                          {serviceExpiryHint(student.currentService.validTo) ? (
+                            <span className="rounded-full bg-white px-3 py-1 font-semibold text-serenity-ink">
+                              {serviceExpiryHint(student.currentService.validTo)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                     <button
                       onClick={() => void onCheckInStudent(student)}
@@ -252,4 +276,20 @@ export default function TeacherTodayPage() {
       </div>
     </main>
   );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(new Date(value));
+}
+
+function serviceExpiryHint(validTo: string) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const end = new Date(validTo);
+  end.setHours(0, 0, 0, 0);
+  const days = Math.ceil((end.getTime() - today.getTime()) / 86400000);
+  if (days < 0) return `已到期 ${Math.abs(days)} 天`;
+  if (days === 0) return "今天到期";
+  if (days <= 7) return `${days} 天后到期`;
+  return "";
 }
