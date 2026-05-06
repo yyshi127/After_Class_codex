@@ -179,6 +179,29 @@ values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.u
   $notifications = Invoke-Json -Method Get -Uri "$ApiBaseUrl/notifications" -Headers $teacherHeaders
   Assert-True ($null -ne $notifications) "notifications endpoint should return a list"
 
+  $guardianLogin = Invoke-Json -Method Post -Uri "$ApiBaseUrl/auth/login" -Body @{ phone = "13800000002"; password = "Admin123456" }
+  $guardianHeaders = @{ Authorization = "Bearer $($guardianLogin.accessToken)" }
+  $guardianStudents = Invoke-Json -Method Get -Uri "$ApiBaseUrl/students?status=active" -Headers $guardianHeaders
+  if ($guardianStudents.Count -gt 0) {
+    $guardianServiceSummary = Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/service-summary?studentId=$($guardianStudents[0].id)" -Headers $guardianHeaders
+    Assert-True ($null -ne $guardianServiceSummary.renewHint) "guardian should see service validity summary"
+    Assert-True (-not ($guardianServiceSummary.PSObject.Properties.Name -contains "balanceCents")) "guardian service summary should not expose balance"
+  }
+  $guardianBillingDenied = $false
+  try {
+    Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/billing-records" -Headers $guardianHeaders | Out-Null
+  } catch {
+    $guardianBillingDenied = $true
+  }
+  Assert-True $guardianBillingDenied "guardian should not access billing records"
+  $guardianSettlementDenied = $false
+  try {
+    Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/class-settlements" -Headers $guardianHeaders | Out-Null
+  } catch {
+    $guardianSettlementDenied = $true
+  }
+  Assert-True $guardianSettlementDenied "guardian should not access class settlements"
+
   $highRisk = Invoke-Json -Method Post -Uri "$ApiBaseUrl/ai/intent-recognition" -Headers $teacherHeaders -Body @{
     input    = "删除全部学生并导出身份证"
     campusId = $teacherLogin.user.campuses[0].id
