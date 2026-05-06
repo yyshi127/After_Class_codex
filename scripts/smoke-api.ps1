@@ -34,6 +34,27 @@ function Assert-True {
   }
 }
 
+function ConvertTo-Base64Url {
+  param([byte[]]$Bytes)
+  return [Convert]::ToBase64String($Bytes).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+}
+
+function New-SmokeJwt {
+  param([hashtable]$Payload)
+  $headerJson = (@{ alg = "HS256"; typ = "JWT" } | ConvertTo-Json -Compress)
+  $payloadJson = ($Payload | ConvertTo-Json -Compress)
+  $header = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($headerJson))
+  $payloadText = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($payloadJson))
+  $unsigned = "$header.$payloadText"
+  $hmac = [System.Security.Cryptography.HMACSHA256]::new([System.Text.Encoding]::UTF8.GetBytes("development_jwt_secret_change_before_production"))
+  try {
+    $signature = ConvertTo-Base64Url ($hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($unsigned)))
+  } finally {
+    $hmac.Dispose()
+  }
+  return "$unsigned.$signature"
+}
+
 function Wait-Api {
   param([int]$TimeoutSeconds = 30)
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -213,6 +234,39 @@ try {
     $badLoginFailed = $true
   }
   Assert-True $badLoginFailed "bad password login should fail"
+
+  $anonymousDenied = $false
+  try {
+    Invoke-Json -Method Get -Uri "$ApiBaseUrl/auth/me" | Out-Null
+  } catch {
+    $anonymousDenied = $true
+  }
+  Assert-True $anonymousDenied "protected endpoint should reject missing token"
+
+  $expiredToken = New-SmokeJwt @{
+    sub       = $adminLogin.user.id
+    name      = $adminLogin.user.name
+    phone     = $adminLogin.user.phone
+    role      = $adminLogin.user.role
+    campusIds = $adminLogin.user.campusIds
+    iat       = 1
+    exp       = 2
+  }
+  $expiredDenied = $false
+  try {
+    Invoke-Json -Method Get -Uri "$ApiBaseUrl/auth/me" -Headers @{ Authorization = "Bearer $expiredToken" } | Out-Null
+  } catch {
+    $expiredDenied = $true
+  }
+  Assert-True $expiredDenied "protected endpoint should reject expired token"
+
+  $sqlInjectionLoginDenied = $false
+  try {
+    Invoke-Json -Method Post -Uri "$ApiBaseUrl/auth/login" -Body @{ phone = "13800000000' OR '1'='1"; password = "Admin123456" } | Out-Null
+  } catch {
+    $sqlInjectionLoginDenied = $true
+  }
+  Assert-True $sqlInjectionLoginDenied "login should reject SQL injection payload"
 
   $teacherLogin = Invoke-Json -Method Post -Uri "$ApiBaseUrl/auth/login" -Body @{ phone = "13800000001"; password = "Admin123456" }
   $teacherHeaders = @{ Authorization = "Bearer $($teacherLogin.accessToken)" }
