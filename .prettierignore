@@ -1,0 +1,12 @@
+node_modules
+dist
+.next
+storage
+logs
+_ai_docx_render_check
+_ai_frontend_spec_render_check
+_docx_render_check
+_docx_render_check_verbose
+_docx_render_direct
+_mvp_docx_render_check
+*.tsbuildinfo
