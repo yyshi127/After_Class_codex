@@ -137,17 +137,37 @@ export class HomeworkService {
     this.assertTeacherLike(user);
     const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
 
-    const feedback = await this.prisma.feedback.create({
-      data: {
-        campusId: student.campusId,
-        studentId: student.id,
-        teacherId: user.id,
-        behavior: dto.behavior,
-        homework: dto.homework,
-        knowledge: dto.knowledge,
-        status: FeedbackStatus.published,
-        publishedAt: new Date(),
-      },
+    const publishedAt = new Date();
+    const feedback = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.feedback.create({
+        data: {
+          campusId: student.campusId,
+          studentId: student.id,
+          teacherId: user.id,
+          behavior: dto.behavior,
+          homework: dto.homework,
+          knowledge: dto.knowledge,
+          status: FeedbackStatus.published,
+          publishedAt,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          campusId: student.campusId,
+          actorUserId: user.id,
+          action: "feedback.publish",
+          targetType: "feedback",
+          targetId: created.id,
+          metadata: {
+            studentId: student.id,
+            teacherId: user.id,
+            publishedAt: publishedAt.toISOString(),
+          },
+        },
+      });
+
+      return created;
     });
 
     await this.notificationsService.createForStudentGuardians({
