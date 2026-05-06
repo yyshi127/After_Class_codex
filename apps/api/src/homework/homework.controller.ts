@@ -11,6 +11,7 @@ import { UpdateMistakeStatusDto } from "./dto/update-mistake-status.dto";
 import { GenerateSimilarQuestionsDto } from "./dto/generate-similar-questions.dto";
 import { UpdateSimilarQuestionStatusDto } from "./dto/update-similar-question-status.dto";
 import { GeneratePracticeSheetDto } from "./dto/generate-practice-sheet.dto";
+import { GenerateFeedbackDraftDto } from "./dto/generate-feedback-draft.dto";
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -40,6 +41,11 @@ export class HomeworkController {
   @Post("feedback")
   publishFeedback(@CurrentUser() user: AuthenticatedUser, @Body() dto: PublishFeedbackDto) {
     return this.homeworkService.publishFeedback(user, dto);
+  }
+
+  @Post("feedback/draft")
+  generateFeedbackDraft(@CurrentUser() user: AuthenticatedUser, @Body() dto: GenerateFeedbackDraftDto) {
+    return this.homeworkService.generateFeedbackDraft(user, dto);
   }
 
   @Get("mistakes")

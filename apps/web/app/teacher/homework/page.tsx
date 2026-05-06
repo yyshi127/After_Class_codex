@@ -24,6 +24,7 @@ import {
   StudentItem,
   createHomeworkReview,
   downloadPracticeSheet,
+  generateFeedbackDraft,
   generatePracticeSheet,
   generateSimilarQuestions,
   listClasses,
@@ -69,6 +70,7 @@ export default function TeacherHomeworkPage() {
   const [knowledge, setKnowledge] = useState("计算基础稳定，应用题审题还需加强。");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [draftingFeedback, setDraftingFeedback] = useState(false);
 
   const campuses = useMemo(() => user?.campuses ?? [], [user]);
   const selectedCampusId = campusId || campuses[0]?.id || "";
@@ -186,6 +188,26 @@ export default function TeacherHomeworkPage() {
     await publishFeedback({ studentId: selectedStudentId, behavior, homework, knowledge });
     setMessage("今日三类点评已发布，家长端可查看总结反馈。");
     await reload();
+  }
+
+  async function onGenerateFeedbackDraft() {
+    if (!selectedStudentId) return;
+    setDraftingFeedback(true);
+    try {
+      const draft = await generateFeedbackDraft({
+        studentId: selectedStudentId,
+        reviewId: pendingReview?.id,
+        teacherNote: teacherComment,
+      });
+      setBehavior(draft.behavior);
+      setHomework(draft.homework);
+      setKnowledge(draft.knowledge);
+      setMessage("AI draft generated. Please review and publish after confirmation.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to generate AI draft");
+    } finally {
+      setDraftingFeedback(false);
+    }
   }
 
   async function onConfirmMistake(mistake: MistakeItem) {
@@ -352,6 +374,10 @@ export default function TeacherHomeworkPage() {
                   <textarea className="min-h-28 rounded-2xl bg-serenity-bg p-4 text-serenity-ink shadow-insetSoft outline-none" value={knowledge} onChange={(event) => setKnowledge(event.target.value)} />
                 </label>
               </div>
+              <button onClick={() => void onGenerateFeedbackDraft()} disabled={!selectedStudentId || draftingFeedback} className="mt-5 mr-3 inline-flex h-11 items-center gap-2 rounded-2xl bg-serenity-bg px-4 text-sm font-semibold shadow-insetSoft disabled:text-serenity-muted">
+                <MessageSquareText className="h-4 w-4" />
+                {draftingFeedback ? "AI generating" : "AI draft"}
+              </button>
               <button onClick={() => void onPublishFeedback()} disabled={!selectedStudentId} className="mt-5 flex h-11 items-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic disabled:bg-serenity-muted">
                 <FileText className="h-4 w-4" />
                 发布今日点评

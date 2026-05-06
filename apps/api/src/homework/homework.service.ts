@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, PracticeSheetStatus, SimilarQuestionStatus, UserRole } from "@prisma/client";
+import { AiRiskLevel, FeedbackStatus, HomeworkImageType, HomeworkStatus, MistakeStatus, PracticeSheetStatus, SimilarQuestionStatus, UserRole } from "@prisma/client";
 import { existsSync, mkdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import { UpdateMistakeStatusDto } from "./dto/update-mistake-status.dto";
 import { GenerateSimilarQuestionsDto } from "./dto/generate-similar-questions.dto";
 import { UpdateSimilarQuestionStatusDto } from "./dto/update-similar-question-status.dto";
 import { GeneratePracticeSheetDto } from "./dto/generate-practice-sheet.dto";
+import { GenerateFeedbackDraftDto } from "./dto/generate-feedback-draft.dto";
 
 @Injectable()
 export class HomeworkService {
@@ -177,6 +178,64 @@ export class HomeworkService {
     });
 
     return feedback;
+  }
+
+  async generateFeedbackDraft(user: AuthenticatedUser, dto: GenerateFeedbackDraftDto) {
+    this.assertTeacherLike(user);
+    const student = await this.accessService.findAccessibleStudent(user, dto.studentId);
+    const [latestAttendance, review] = await Promise.all([
+      this.prisma.attendanceRecord.findFirst({
+        where: { studentId: student.id },
+        orderBy: { occurredAt: "desc" },
+      }),
+      dto.reviewId
+        ? this.prisma.homeworkReview.findFirst({
+            where: {
+              id: dto.reviewId,
+              student: this.accessService.buildStudentScopeWhere(user, { studentId: student.id }),
+            },
+          })
+        : this.prisma.homeworkReview.findFirst({
+            where: { studentId: student.id },
+            orderBy: { createdAt: "desc" },
+          }),
+    ]);
+
+    const attendanceText =
+      latestAttendance?.status === "checked_in" ? "今日已按时到托" : latestAttendance?.status === "leave" ? "今日有请假记录" : "今日考勤待老师确认";
+    const homeworkText =
+      review?.status === HomeworkStatus.completed ? "作业已完成批改并反馈" : review?.status === HomeworkStatus.needs_correction ? "作业需要订正" : "作业批改待确认";
+    const teacherNote = dto.teacherNote?.trim();
+    const draft = {
+      behavior: teacherNote ? `课堂状态稳定，${teacherNote}` : `课堂状态稳定，${attendanceText}，能跟随晚辅流程完成学习任务。`,
+      homework: `${homeworkText}，书写和订正情况建议老师发布前再核对一次。`,
+      knowledge: review?.subject ? `${review.subject}相关知识点掌握情况整体正常，错题部分建议结合错题本继续巩固。` : "知识掌握情况整体正常，薄弱点建议结合错题本继续巩固。",
+    };
+
+    const log = await this.prisma.aiActionLog.create({
+      data: {
+        campusId: student.campusId,
+        actorUserId: user.id,
+        rawInput: teacherNote || `generate feedback draft for ${student.name}`,
+        intent: "teacher_feedback_draft",
+        entities: {
+          studentId: student.id,
+          reviewId: review?.id ?? null,
+          attendanceStatus: latestAttendance?.status ?? null,
+          draft,
+        },
+        riskLevel: AiRiskLevel.low,
+        confidence: 0.78,
+        requiresConfirmation: true,
+        result: "draft_generated",
+      },
+    });
+
+    return {
+      ...draft,
+      logId: log.id,
+      requiresConfirmation: true,
+    };
   }
 
   listMistakes(user: AuthenticatedUser, campusId?: string, studentId?: string) {

@@ -313,6 +313,14 @@ export type PracticeSheetItem = {
   teacher?: { id: string; name: string };
 };
 
+export type FeedbackDraft = {
+  behavior: string;
+  homework: string;
+  knowledge: string;
+  logId: string;
+  requiresConfirmation: boolean;
+};
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getStoredToken();
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -506,6 +514,13 @@ export function listFeedback(params: { campusId?: string; studentId?: string }) 
 
 export function publishFeedback(payload: { studentId: string; behavior: string; homework: string; knowledge: string }) {
   return apiRequest<FeedbackItem>("/feedback", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function generateFeedbackDraft(payload: { studentId: string; reviewId?: string; teacherNote?: string }) {
+  return apiRequest<FeedbackDraft>("/feedback/draft", {
     method: "POST",
     body: JSON.stringify(payload),
   });
