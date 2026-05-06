@@ -15,6 +15,7 @@ import {
   listClassSettlements,
   listClasses,
   listStudents,
+  runServiceReminders,
   sendOverdueServiceReminder,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
@@ -132,6 +133,16 @@ export default function AdminFinancePage() {
     await reload();
   }
 
+  async function onRunServiceReminders(mode: "upcoming" | "today") {
+    const result = await runServiceReminders({
+      campusId: selectedCampusId,
+      mode,
+      daysBefore: 7,
+    });
+    setMessage(`已扫描 ${result.scannedCount} 条服务，发送 ${result.createdCount} 条提醒`);
+    await reload();
+  }
+
   async function onGenerateSettlement() {
     if (!selectedClassId || user?.role !== "admin") return;
     await generateClassSettlement({
@@ -241,6 +252,16 @@ export default function AdminFinancePage() {
                   <button onClick={() => void onSendOverdueReminder()} className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-bg px-4 text-sm font-semibold shadow-insetSoft">
                     手动发送逾期提醒
                   </button>
+                ) : null}
+                {user.role === "admin" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => void onRunServiceReminders("upcoming")} className="h-11 rounded-2xl bg-serenity-bg px-3 text-sm font-semibold shadow-insetSoft">
+                      到期前提醒
+                    </button>
+                    <button onClick={() => void onRunServiceReminders("today")} className="h-11 rounded-2xl bg-serenity-bg px-3 text-sm font-semibold shadow-insetSoft">
+                      到期当天提醒
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </section>

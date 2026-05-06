@@ -4,6 +4,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { AuthenticatedUser } from "../auth/types";
 import { CreateBillingRecordDto } from "./dto/create-billing-record.dto";
 import { GenerateClassSettlementDto } from "./dto/generate-class-settlement.dto";
+import { RunServiceRemindersDto } from "./dto/run-service-reminders.dto";
 import { SendOverdueServiceReminderDto } from "./dto/send-overdue-service-reminder.dto";
 import { UpsertTeacherFeeConfigDto } from "./dto/upsert-teacher-fee-config.dto";
 import { FinanceService } from "./finance.service";
@@ -35,6 +36,11 @@ export class FinanceController {
   @Post("service-reminders/overdue")
   sendOverdueServiceReminder(@CurrentUser() user: AuthenticatedUser, @Body() dto: SendOverdueServiceReminderDto) {
     return this.financeService.sendOverdueServiceReminder(user, dto.studentId);
+  }
+
+  @Post("service-reminders/run")
+  runServiceReminders(@CurrentUser() user: AuthenticatedUser, @Body() dto: RunServiceRemindersDto) {
+    return this.financeService.runServiceReminders(user, dto);
   }
 
   @Post("teacher-fee-configs")

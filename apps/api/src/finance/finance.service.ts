@@ -6,6 +6,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBillingRecordDto } from "./dto/create-billing-record.dto";
 import { GenerateClassSettlementDto } from "./dto/generate-class-settlement.dto";
+import { RunServiceRemindersDto, ServiceReminderMode } from "./dto/run-service-reminders.dto";
 import { UpsertTeacherFeeConfigDto } from "./dto/upsert-teacher-fee-config.dto";
 
 @Injectable()
@@ -111,6 +112,68 @@ export class FinanceService {
       studentName: student.name,
       validTo: service.validTo,
       notifiedAt: new Date(),
+    };
+  }
+
+  async runServiceReminders(user: AuthenticatedUser, dto: RunServiceRemindersDto) {
+    this.assertAdmin(user);
+    this.accessService.assertCampusAccess(user, dto.campusId);
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const targetStart = new Date(todayStart);
+    if (dto.mode === ServiceReminderMode.upcoming) {
+      targetStart.setDate(targetStart.getDate() + (dto.daysBefore ?? 7));
+    }
+    const targetEnd = new Date(targetStart);
+    targetEnd.setDate(targetEnd.getDate() + 1);
+
+    const services = await this.prisma.studentService.findMany({
+      where: {
+        student: {
+          campusId: dto.campusId,
+          status: "active",
+        },
+        validTo: {
+          gte: targetStart,
+          lt: targetEnd,
+        },
+      },
+      include: {
+        student: { select: { id: true, name: true } },
+        serviceType: { select: { name: true } },
+      },
+      take: 200,
+    });
+
+    let createdCount = 0;
+    for (const service of services) {
+      const title = dto.mode === ServiceReminderMode.today ? "服务今日到期提醒" : "服务即将到期提醒";
+      const existing = await this.prisma.notification.findFirst({
+        where: {
+          studentId: service.studentId,
+          title,
+          createdAt: { gte: todayStart },
+        },
+        select: { id: true },
+      });
+      if (existing) {
+        continue;
+      }
+
+      await this.notificationsService.createForStudentGuardians({
+        studentId: service.studentId,
+        title,
+        content: `${service.student.name} 的${service.serviceType.name}有效期至 ${service.validTo.toISOString().slice(0, 10)}，如需续费请联系机构老师。`,
+      });
+      createdCount += 1;
+    }
+
+    return {
+      campusId: dto.campusId,
+      mode: dto.mode,
+      scannedCount: services.length,
+      createdCount,
     };
   }
 

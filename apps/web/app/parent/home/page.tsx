@@ -11,6 +11,7 @@ import {
   ServiceSummary,
   StudentAttendanceItem,
   StudentItem,
+  createLeaveRequest,
   getFileSignedUrl,
   getServiceSummary,
   listFeedback,
@@ -48,6 +49,15 @@ export default function ParentHomePage() {
   const [leaveRows, setLeaveRows] = useState<LeaveRequestItem[]>([]);
   const [serviceSummary, setServiceSummary] = useState<ServiceSummary | null>(null);
   const [message, setMessage] = useState("");
+  const [assistantTab, setAssistantTab] = useState<"status" | "homework" | "leave" | "service">("status");
+  const [leaveForm, setLeaveForm] = useState({
+    type: "事假",
+    startsAt: localDateTimeValue(),
+    endsAt: localDateTimeValue(),
+    reason: "家中有事，请假一天。",
+    mealAffected: true,
+  });
+  const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const campuses = useMemo(() => user?.campuses ?? [], [user]);
@@ -134,6 +144,21 @@ export default function ParentHomePage() {
     router.replace("/login");
   }
 
+  async function onConfirmLeaveRequest() {
+    if (!activeStudentId) return;
+    await createLeaveRequest({
+      studentId: activeStudentId,
+      type: leaveForm.type,
+      startsAt: new Date(leaveForm.startsAt).toISOString(),
+      endsAt: new Date(leaveForm.endsAt).toISOString(),
+      reason: leaveForm.reason,
+      mealAffected: leaveForm.mealAffected,
+    });
+    setLeaveConfirmVisible(false);
+    setMessage("请假申请已提交，老师会收到确认通知。");
+    await reload();
+  }
+
   if (!user) {
     return <main className="min-h-screen bg-serenity-bg p-6 text-serenity-muted">正在加载家长端...</main>;
   }
@@ -167,6 +192,65 @@ export default function ParentHomePage() {
         </header>
 
         <section className="mt-5 grid gap-4">
+          <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+            <div className="flex items-center gap-3">
+              <MessageCircle className="h-5 w-5 text-serenity-blue" />
+              <h2 className="text-lg font-semibold">AI 助手</h2>
+            </div>
+            <div className="mt-4 grid grid-cols-4 gap-2 text-xs text-serenity-muted">
+              <button onClick={() => setAssistantTab("status")} className={`rounded-2xl px-2 py-3 shadow-insetSoft ${assistantTab === "status" ? "bg-serenity-blue text-white" : "bg-serenity-bg"}`}>今日状态</button>
+              <button onClick={() => setAssistantTab("homework")} className={`rounded-2xl px-2 py-3 shadow-insetSoft ${assistantTab === "homework" ? "bg-serenity-blue text-white" : "bg-serenity-bg"}`}>作业情况</button>
+              <button onClick={() => setAssistantTab("leave")} className={`rounded-2xl px-2 py-3 shadow-insetSoft ${assistantTab === "leave" ? "bg-serenity-blue text-white" : "bg-serenity-bg"}`}>快捷请假</button>
+              <button onClick={() => setAssistantTab("service")} className={`rounded-2xl px-2 py-3 shadow-insetSoft ${assistantTab === "service" ? "bg-serenity-blue text-white" : "bg-serenity-bg"}`}>服务有效期</button>
+            </div>
+            <div className="mt-4 rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+              {assistantTab === "status" ? (
+                <div>今天状态：{attendanceLabels[latestAttendance?.status ?? "pending"]}，{latestAttendance ? new Date(latestAttendance.occurredAt).toLocaleString("zh-CN") : "暂未更新"}。</div>
+              ) : null}
+              {assistantTab === "homework" ? (
+                <div>作业情况：当前共有 {reviews.length} 条作业反馈，最近一条为 {reviews[0] ? `${reviews[0].subject || "作业"} · ${reviewStatusLabels[reviews[0].status]}` : "暂无作业反馈"}。</div>
+              ) : null}
+              {assistantTab === "service" ? (
+                <div>
+                  服务有效期：{serviceSummary?.validTo ? `至 ${new Date(serviceSummary.validTo).toLocaleDateString("zh-CN")}` : "待确认"}。续费请联系机构老师，本助手不查询余额或欠费金额。
+                </div>
+              ) : null}
+              {assistantTab === "leave" ? (
+                <div className="grid gap-3">
+                  <select className="h-11 rounded-2xl bg-white/70 px-4 text-serenity-ink outline-none" value={leaveForm.type} onChange={(event) => setLeaveForm({ ...leaveForm, type: event.target.value })}>
+                    <option value="事假">事假</option>
+                    <option value="病假">病假</option>
+                    <option value="其他">其他</option>
+                  </select>
+                  <input type="datetime-local" className="h-11 rounded-2xl bg-white/70 px-4 text-serenity-ink outline-none" value={leaveForm.startsAt} onChange={(event) => setLeaveForm({ ...leaveForm, startsAt: event.target.value })} />
+                  <input type="datetime-local" className="h-11 rounded-2xl bg-white/70 px-4 text-serenity-ink outline-none" value={leaveForm.endsAt} onChange={(event) => setLeaveForm({ ...leaveForm, endsAt: event.target.value })} />
+                  <textarea className="min-h-20 rounded-2xl bg-white/70 p-4 text-serenity-ink outline-none" value={leaveForm.reason} onChange={(event) => setLeaveForm({ ...leaveForm, reason: event.target.value })} />
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={leaveForm.mealAffected} onChange={(event) => setLeaveForm({ ...leaveForm, mealAffected: event.target.checked })} />
+                    影响当天餐食安排
+                  </label>
+                  <button onClick={() => setLeaveConfirmVisible(true)} className="rounded-2xl bg-serenity-blue px-4 py-3 text-sm font-semibold text-white shadow-neumorphic">
+                    生成请假确认卡片
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            {leaveConfirmVisible ? (
+              <div className="mt-4 rounded-3xl bg-white/80 p-4 text-sm leading-6 shadow-insetSoft">
+                <div className="font-semibold text-serenity-ink">请假确认卡片</div>
+                <div className="mt-2 text-serenity-muted">学生：{activeStudent?.name ?? "孩子"}</div>
+                <div className="text-serenity-muted">时间：{new Date(leaveForm.startsAt).toLocaleString("zh-CN")} 至 {new Date(leaveForm.endsAt).toLocaleString("zh-CN")}</div>
+                <div className="text-serenity-muted">类型：{leaveForm.type}</div>
+                <div className="text-serenity-muted">原因：{leaveForm.reason || "未填写"}</div>
+                <div className="text-serenity-muted">餐食影响：{leaveForm.mealAffected ? "影响" : "不影响"}</div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => void onConfirmLeaveRequest()} className="rounded-2xl bg-serenity-blue px-4 py-2 text-sm font-semibold text-white">确认提交</button>
+                  <button onClick={() => setLeaveConfirmVisible(false)} className="rounded-2xl bg-serenity-bg px-4 py-2 text-sm font-semibold shadow-insetSoft">修改</button>
+                </div>
+              </div>
+            ) : null}
+          </article>
+
           <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
             <div className="flex items-center gap-3">
               <CalendarCheck2 className="h-5 w-5 text-serenity-blue" />
@@ -403,4 +487,10 @@ function leaveStatusLabel(status: LeaveRequestItem["status"]) {
     cancelled: "已取消",
   };
   return labels[status];
+}
+
+function localDateTimeValue() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 16);
 }

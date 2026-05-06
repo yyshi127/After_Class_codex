@@ -568,6 +568,20 @@ export function listLeaveRequests(params: { campusId?: string; studentId?: strin
   return apiRequest<LeaveRequestItem[]>(`/leave-requests${query ? `?${query}` : ""}`);
 }
 
+export function createLeaveRequest(payload: {
+  studentId: string;
+  type: string;
+  startsAt: string;
+  endsAt: string;
+  reason?: string;
+  mealAffected: boolean;
+}) {
+  return apiRequest<LeaveRequestItem>("/leave-requests", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function retryNotification(id: string) {
   return apiRequest<NotificationItem>(`/notifications/${encodeURIComponent(id)}/retry`, {
     method: "POST",
@@ -587,6 +601,18 @@ export function sendOverdueServiceReminder(studentId: string) {
   }>("/finance/service-reminders/overdue", {
     method: "POST",
     body: JSON.stringify({ studentId }),
+  });
+}
+
+export function runServiceReminders(payload: { campusId: string; mode: "upcoming" | "today"; daysBefore?: number }) {
+  return apiRequest<{
+    campusId: string;
+    mode: "upcoming" | "today";
+    scannedCount: number;
+    createdCount: number;
+  }>("/finance/service-reminders/run", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

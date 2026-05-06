@@ -85,6 +85,40 @@ export class NotificationsService {
     );
   }
 
+  async createForStudentTeachers(input: { studentId: string; title: string; content: string }) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: input.studentId },
+      include: {
+        class: {
+          include: {
+            teachers: {
+              include: { teacher: true },
+            },
+          },
+        },
+      },
+    });
+    if (!student?.class) {
+      return [];
+    }
+
+    return Promise.all(
+      student.class.teachers.map((binding) =>
+        this.prisma.notification.create({
+          data: {
+            campusId: student.campusId,
+            studentId: student.id,
+            recipientUserId: binding.teacherId,
+            title: input.title,
+            content: input.content,
+            status: "sent",
+            sentAt: new Date(),
+          },
+        }),
+      ),
+    );
+  }
+
   async retryFailed(user: AuthenticatedUser, notificationId: string) {
     if (user.role === UserRole.guardian || user.role === UserRole.student) {
       throw new ForbiddenException("Only staff can retry notifications");
