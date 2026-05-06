@@ -81,6 +81,7 @@ function Ensure-Api {
 function Cleanup-SmokeData {
   param(
     [string]$AttendanceId,
+    [string]$PhotoAttendanceId,
     [string]$TeacherAttendanceId,
     [string]$StudentServiceId,
     [string]$AiLogId,
@@ -101,6 +102,7 @@ function Cleanup-SmokeData {
   )
   if (
     -not $AttendanceId -and
+    -not $PhotoAttendanceId -and
     -not $TeacherAttendanceId -and
     -not $StudentServiceId -and
     -not $AiLogId -and
@@ -130,6 +132,7 @@ function Cleanup-SmokeData {
   }
   $sql = @"
 delete from "AuditLog" where "targetId" = '$AttendanceId';
+delete from "AuditLog" where "targetId" = '$PhotoAttendanceId';
 delete from "AuditLog" where "targetId" = '$TeacherAttendanceId';
 delete from "ClassSettlement" where id = '$ClassSettlementId';
 delete from "TeacherFeeConfig" where id = '$TeacherFeeConfigId';
@@ -153,6 +156,7 @@ delete from "AiActionLog" where entities->>'reviewId' = '$HomeworkReviewId';
 delete from "Feedback" where id = '$FeedbackId';
 delete from "HomeworkReview" where id = '$HomeworkReviewId';
 delete from "AttendanceRecord" where id = '$AttendanceId';
+delete from "AttendanceRecord" where id = '$PhotoAttendanceId';
 delete from "TeacherAttendance" where id = '$TeacherAttendanceId';
 delete from "StudentService" where id = '$StudentServiceId';
 delete from "AiActionLog" where id = '$AiLogId';
@@ -192,6 +196,7 @@ function Invoke-SpoofedImageUpload {
 }
 
 $attendanceId = $null
+$photoAttendanceId = $null
 $teacherAttendanceId = $null
 $studentServiceId = $null
 $aiLogId = $null
@@ -384,6 +389,19 @@ values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.u
   $teacherAttendanceId = $teacherAttendance.id
   Assert-True ($teacherAttendance.status -eq "checked_in") "teacher check-in should create teacher attendance"
 
+  $notificationStudentId = $smokeStudent.id
+  $notificationCreatedAfter = (Get-Date).ToUniversalTime().ToString("o")
+  $photoAttendance = Invoke-Json -Method Post -Uri "$ApiBaseUrl/attendance/students/check-in" -Headers $teacherHeaders -Body @{
+    studentId  = $smokeStudent.id
+    photoUrl   = "https://example.local/smoke-checkin-photo.png"
+    occurredAt = "2026-05-06T08:30:00.000Z"
+  }
+  $photoAttendanceId = $photoAttendance.id
+  Assert-True ($photoAttendance.status -eq "checked_in") "teacher photo check-in should create student attendance"
+  Assert-True ($photoAttendance.photoUrl -eq "https://example.local/smoke-checkin-photo.png") "student check-in should keep photo URL"
+  $checkInNotificationCount = [int](Invoke-SqlScalar "select count(*) from `"Notification`" where `"studentId`" = '$($smokeStudent.id)' and `"createdAt`" >= '$notificationCreatedAfter';")
+  Assert-True ($checkInNotificationCount -gt 0) "student check-in should notify guardians"
+
   $notifications = Invoke-Json -Method Get -Uri "$ApiBaseUrl/notifications" -Headers $teacherHeaders
   Assert-True ($null -ne $notifications) "notifications endpoint should return a list"
 
@@ -485,8 +503,6 @@ values ('$billingRecordId', '$($teacherLogin.user.campuses[0].id)', '$($smokeStu
   $attendanceId = $attendance.id
   Assert-True ($attendance.status -eq "checked_in") "confirmed quick entry did not create checked-in attendance"
 
-  $notificationStudentId = $smokeStudent.id
-  $notificationCreatedAfter = (Get-Date).ToUniversalTime().ToString("o")
   $review = Invoke-Json -Method Post -Uri "$ApiBaseUrl/homework/reviews" -Headers $teacherHeaders -Body @{
     studentId         = $smokeStudent.id
     subject           = "math"
@@ -556,7 +572,7 @@ values ('$billingRecordId', '$($teacherLogin.user.campuses[0].id)', '$($smokeStu
 
   Write-Host "smoke-api passed"
 } finally {
-  Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId -SettlementAttendanceIds $settlementAttendanceIds -BillingRecordId $billingRecordId -TeacherFeeConfigId $teacherFeeConfigId -ClassSettlementId $classSettlementId -ClassId $classCrudId -StudentId $studentCrudId -GuardianPhone $guardianCrudPhone -HomeworkReviewId $homeworkReviewId -FeedbackId $feedbackId -MistakeId $mistakeId -SimilarQuestionIds $similarQuestionIds -PracticeSheetId $practiceSheetId -NotificationStudentId $notificationStudentId -NotificationCreatedAfter $notificationCreatedAfter
+  Cleanup-SmokeData -AttendanceId $attendanceId -PhotoAttendanceId $photoAttendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId -SettlementAttendanceIds $settlementAttendanceIds -BillingRecordId $billingRecordId -TeacherFeeConfigId $teacherFeeConfigId -ClassSettlementId $classSettlementId -ClassId $classCrudId -StudentId $studentCrudId -GuardianPhone $guardianCrudPhone -HomeworkReviewId $homeworkReviewId -FeedbackId $feedbackId -MistakeId $mistakeId -SimilarQuestionIds $similarQuestionIds -PracticeSheetId $practiceSheetId -NotificationStudentId $notificationStudentId -NotificationCreatedAfter $notificationCreatedAfter
   Invoke-Sql "delete from `"AuditLog`" where `"targetId`" in ('$signedFileId', '$unauthorizedFileId', '$unauthorizedCampusId'); delete from `"FileObject`" where id in ('$signedFileId', '$unauthorizedFileId');"
   Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId';"
   if ($startedApi) {
