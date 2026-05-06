@@ -3,12 +3,14 @@ import { UserRole } from "@prisma/client";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
 import { PrismaService } from "../prisma/prisma.service";
+import { NotificationChannelService } from "./notification-channel.service";
 
 @Injectable()
 export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessService: AccessService,
+    private readonly notificationChannelService: NotificationChannelService,
   ) {}
 
   async list(user: AuthenticatedUser, campusId?: string, studentId?: string) {
@@ -66,9 +68,9 @@ export class NotificationsService {
     }
 
     return Promise.all(
-      student.guardians.map((binding) => {
+      student.guardians.map(async (binding) => {
         const recipientUserId = binding.guardian.userLinks[0]?.userId;
-        return this.prisma.notification.create({
+        const notification = await this.prisma.notification.create({
           data: {
             campusId: student.campusId,
             studentId: student.id,
@@ -81,6 +83,12 @@ export class NotificationsService {
             failReason: recipientUserId ? null : "guardian_user_not_linked",
           },
         });
+        await this.notificationChannelService.deliver({
+          recipientPhone: binding.guardian.phone,
+          title: input.title,
+          content: input.content,
+        });
+        return notification;
       }),
     );
   }
@@ -157,7 +165,7 @@ export class NotificationsService {
       });
     }
 
-    return this.prisma.notification.update({
+    const updated = await this.prisma.notification.update({
       where: { id: notification.id },
       data: {
         recipientUserId,
@@ -166,5 +174,11 @@ export class NotificationsService {
         failReason: null,
       },
     });
+    await this.notificationChannelService.deliver({
+      recipientPhone: notification.guardian?.phone,
+      title: notification.title,
+      content: notification.content,
+    });
+    return updated;
   }
 }
