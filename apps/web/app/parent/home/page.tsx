@@ -6,6 +6,7 @@ import { BookOpenCheck, CalendarCheck2, Home, Image as ImageIcon, LogOut, Messag
 import {
   FeedbackItem,
   HomeworkReviewItem,
+  LeaveRequestItem,
   NotificationItem,
   ServiceSummary,
   StudentAttendanceItem,
@@ -14,6 +15,7 @@ import {
   getServiceSummary,
   listFeedback,
   listHomeworkReviews,
+  listLeaveRequests,
   listNotifications,
   listStudentAttendance,
   listStudents,
@@ -43,6 +45,7 @@ export default function ParentHomePage() {
   const [reviews, setReviews] = useState<HomeworkReviewItem[]>([]);
   const [feedbackRows, setFeedbackRows] = useState<FeedbackItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [leaveRows, setLeaveRows] = useState<LeaveRequestItem[]>([]);
   const [serviceSummary, setServiceSummary] = useState<ServiceSummary | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -100,21 +103,24 @@ export default function ParentHomePage() {
         setReviews([]);
         setFeedbackRows([]);
         setNotifications([]);
+        setLeaveRows([]);
         setServiceSummary(null);
         return;
       }
 
-      const [attendanceList, reviewList, feedbackList, notificationList, serviceInfo] = await Promise.all([
+      const [attendanceList, reviewList, feedbackList, notificationList, leaveList, serviceInfo] = await Promise.all([
         listStudentAttendance({ campusId, studentId }),
         listHomeworkReviews({ campusId, studentId }),
         listFeedback({ campusId, studentId }),
         listNotifications({ campusId, studentId }),
+        listLeaveRequests({ campusId, studentId }),
         getServiceSummary(studentId),
       ]);
       setAttendanceRows(attendanceList);
       setReviews(reviewList);
       setFeedbackRows(feedbackList);
       setNotifications(notificationList);
+      setLeaveRows(leaveList);
       setServiceSummary(serviceInfo);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
@@ -157,6 +163,7 @@ export default function ParentHomePage() {
               <RefreshCcw className="h-4 w-4" />
             </button>
           </div>
+          {students.length > 1 ? <div className="mt-3 text-xs text-serenity-muted">已支持多个孩子切换查看。</div> : null}
         </header>
 
         <section className="mt-5 grid gap-4">
@@ -272,13 +279,45 @@ export default function ParentHomePage() {
           <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
             <div className="flex items-center gap-3">
               <UserRound className="h-5 w-5 text-serenity-blue" />
-              <h2 className="text-lg font-semibold">服务信息</h2>
+              <h2 className="text-lg font-semibold">我的与服务信息</h2>
             </div>
-            <div className="mt-4 rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
-              <div><span className="font-semibold text-serenity-ink">托管类型：</span>{serviceSummary?.serviceType?.name ?? "待确认"}</div>
-              <div><span className="font-semibold text-serenity-ink">服务有效期：</span>{serviceSummary?.validTo ? `至 ${new Date(serviceSummary.validTo).toLocaleDateString("zh-CN")}` : "待确认"}</div>
-              <div className="mt-2">{serviceSummary?.renewHint ?? "当前页面仅展示服务有效期和续费提示入口。"}</div>
-              <div className="mt-2">不展示余额、欠费金额、班级核算或机构收入。</div>
+            <div className="mt-4 grid gap-3">
+              <div className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+                <div><span className="font-semibold text-serenity-ink">孩子姓名：</span>{activeStudent?.name ?? "待确认"}</div>
+                <div><span className="font-semibold text-serenity-ink">年级班级：</span>{activeStudent?.grade ?? "未填"} · {activeStudent?.class?.name ?? "未分班"}</div>
+                <div><span className="font-semibold text-serenity-ink">就读学校：</span>{activeStudent?.schoolName ?? "未填写"}</div>
+                <div><span className="font-semibold text-serenity-ink">身份证号：</span>{activeStudent?.idCardNoMasked ?? "未录入"}</div>
+              </div>
+              <div className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+                <div><span className="font-semibold text-serenity-ink">家长资料：</span></div>
+                {activeStudent?.guardians?.length ? (
+                  activeStudent.guardians.map((guardian) => (
+                    <div key={guardian.id}>{guardian.name}{guardian.relation ? `（${guardian.relation}）` : ""} · {guardian.phone}</div>
+                  ))
+                ) : (
+                  <div>暂无绑定家长资料</div>
+                )}
+              </div>
+              <div className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+                <div><span className="font-semibold text-serenity-ink">托管类型：</span>{serviceSummary?.serviceType?.name ?? "待确认"}</div>
+                <div><span className="font-semibold text-serenity-ink">服务有效期：</span>{serviceSummary?.validTo ? `至 ${new Date(serviceSummary.validTo).toLocaleDateString("zh-CN")}` : "待确认"}</div>
+                <div className="mt-2">{serviceSummary?.renewHint ?? "当前页面仅展示服务有效期和续费提示入口。"}</div>
+                <div className="mt-2">不展示余额、欠费金额、班级核算或机构收入。</div>
+              </div>
+              <div className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+                <div className="font-semibold text-serenity-ink">请假记录</div>
+                <div className="mt-2 grid gap-2">
+                  {leaveRows.slice(0, 5).map((item) => (
+                    <div key={item.id} className="rounded-2xl bg-white/70 p-3">
+                      {item.type} · {new Date(item.startsAt).toLocaleDateString("zh-CN")} 至 {new Date(item.endsAt).toLocaleDateString("zh-CN")} · {leaveStatusLabel(item.status)}
+                    </div>
+                  ))}
+                  {!leaveRows.length ? <div>暂无请假记录</div> : null}
+                </div>
+              </div>
+              <div className="rounded-3xl bg-serenity-bg p-4 text-sm leading-6 text-serenity-muted shadow-insetSoft">
+                消息设置：MVP 阶段默认接收到校、作业反馈、今日点评和服务到期提醒。
+              </div>
             </div>
           </article>
         </section>
@@ -354,4 +393,14 @@ function AttendancePhoto({ url }: { url: string }) {
       <img src={resolvedUrl} alt="到托照片" className="aspect-[4/3] w-full rounded-2xl object-cover shadow-insetSoft" />
     </a>
   );
+}
+
+function leaveStatusLabel(status: LeaveRequestItem["status"]) {
+  const labels: Record<LeaveRequestItem["status"], string> = {
+    pending: "待确认",
+    approved: "已通过",
+    rejected: "已拒绝",
+    cancelled: "已取消",
+  };
+  return labels[status];
 }

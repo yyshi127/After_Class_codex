@@ -12,6 +12,15 @@ export type ClassItem = {
   campus?: CampusOption;
   teachers?: Array<{ teacher: { id: string; name: string; phone: string | null } }>;
   _count?: { students: number };
+  activeStudentCount?: number;
+  todayAttendanceCount?: number;
+  serviceDistribution?: Array<{ id: string; code: string; name: string; count: number }>;
+};
+
+export type TeacherOption = {
+  id: string;
+  name: string;
+  phone: string | null;
 };
 
 export type StudentItem = {
@@ -185,6 +194,20 @@ export type ClassSettlementItem = {
   status: "draft" | "confirmed";
   class?: { id: string; name: string };
   teacher?: { id: string; name: string } | null;
+};
+
+export type LeaveRequestItem = {
+  id: string;
+  campusId: string;
+  studentId: string;
+  type: string;
+  reason: string | null;
+  startsAt: string;
+  endsAt: string;
+  mealAffected: boolean;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  createdAt: string;
+  student?: { id: string; name: string; class?: { id: string; name: string } | null };
 };
 
 export type StudentIdCardDetail = {
@@ -368,6 +391,18 @@ export function createClass(payload: { campusId: string; name: string }) {
   });
 }
 
+export function listTeacherOptions(campusId?: string) {
+  const query = campusId ? `?campusId=${encodeURIComponent(campusId)}` : "";
+  return apiRequest<TeacherOption[]>(`/classes/teacher-options${query}`);
+}
+
+export function assignClassTeacher(classId: string, teacherId: string) {
+  return apiRequest(`/classes/${encodeURIComponent(classId)}/teachers`, {
+    method: "POST",
+    body: JSON.stringify({ teacherId }),
+  });
+}
+
 export function listStudentAttendance(params: {
   campusId?: string;
   studentId?: string;
@@ -525,6 +560,14 @@ export function listNotifications(params: { campusId?: string; studentId?: strin
   return apiRequest<NotificationItem[]>(`/notifications${query ? `?${query}` : ""}`);
 }
 
+export function listLeaveRequests(params: { campusId?: string; studentId?: string }) {
+  const search = new URLSearchParams();
+  if (params.campusId) search.set("campusId", params.campusId);
+  if (params.studentId) search.set("studentId", params.studentId);
+  const query = search.toString();
+  return apiRequest<LeaveRequestItem[]>(`/leave-requests${query ? `?${query}` : ""}`);
+}
+
 export function retryNotification(id: string) {
   return apiRequest<NotificationItem>(`/notifications/${encodeURIComponent(id)}/retry`, {
     method: "POST",
@@ -533,6 +576,18 @@ export function retryNotification(id: string) {
 
 export function getServiceSummary(studentId: string) {
   return apiRequest<ServiceSummary>(`/finance/service-summary?studentId=${encodeURIComponent(studentId)}`);
+}
+
+export function sendOverdueServiceReminder(studentId: string) {
+  return apiRequest<{
+    studentId: string;
+    studentName: string;
+    validTo: string;
+    notifiedAt: string;
+  }>("/finance/service-reminders/overdue", {
+    method: "POST",
+    body: JSON.stringify({ studentId }),
+  });
 }
 
 export function listBillingRecords(params: { campusId?: string; studentId?: string }) {

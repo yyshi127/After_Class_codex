@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Building2, CalendarDays, Plus, RefreshCcw, School, UserRoundPlus, Users } from "lucide-react";
 import {
+  assignClassTeacher,
   bindStudentGuardian,
   ClassItem,
   StudentItem,
+  TeacherOption,
   configureStudentService,
   createClass,
   createStudent,
@@ -17,6 +19,7 @@ import {
   listHomeworkReviews,
   listStudentAttendance,
   listStudents,
+  listTeacherOptions,
   updateStudent,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
@@ -101,6 +104,7 @@ export default function AdminStudentsPage() {
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [studentSummaries, setStudentSummaries] = useState<Record<string, StudentSummary>>({});
   const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [teacherOptions, setTeacherOptions] = useState<TeacherOption[]>([]);
   const [campusId, setCampusId] = useState("");
   const [classId, setClassId] = useState("");
   const [status, setStatus] = useState("");
@@ -130,6 +134,10 @@ export default function AdminStudentsPage() {
     relation: "母亲",
   });
   const [className, setClassName] = useState("");
+  const [teacherAssignForm, setTeacherAssignForm] = useState({
+    classId: "",
+    teacherId: "",
+  });
 
   const campuses = useMemo(() => user?.campuses ?? [], [user]);
   const selectedCampusId = campusId || campuses[0]?.id || "";
@@ -172,9 +180,10 @@ export default function AdminStudentsPage() {
     setLoading(true);
     setMessage("");
     try {
-      const [studentRows, classRows, attendanceRows, homeworkRows, billingRows] = await Promise.all([
+      const [studentRows, classRows, teacherRows, attendanceRows, homeworkRows, billingRows] = await Promise.all([
         listStudents({ campusId: selectedCampusId, classId: classId || undefined, status: status || undefined }),
         listClasses(selectedCampusId),
+        listTeacherOptions(selectedCampusId),
         listStudentAttendance({ campusId: selectedCampusId }),
         listHomeworkReviews({ campusId: selectedCampusId }),
         listBillingRecords({ campusId: selectedCampusId }),
@@ -196,9 +205,15 @@ export default function AdminStudentsPage() {
       }
       setStudents(studentRows);
       setClasses(classRows);
+      setTeacherOptions(teacherRows);
       setStudentSummaries(summaries);
       setServiceForm((prev) => ({ ...prev, studentId: prev.studentId || studentRows[0]?.id || "" }));
       setGuardianForm((prev) => ({ ...prev, studentId: prev.studentId || studentRows[0]?.id || "" }));
+      setTeacherAssignForm((prev) => ({
+        ...prev,
+        classId: prev.classId || classRows[0]?.id || "",
+        teacherId: prev.teacherId || teacherRows[0]?.id || "",
+      }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -231,6 +246,15 @@ export default function AdminStudentsPage() {
     await createClass({ campusId: selectedCampusId, name: className });
     setClassName("");
     setMessage("班级已新增");
+    await reload();
+  }
+
+  async function onAssignTeacher(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!teacherAssignForm.classId || !teacherAssignForm.teacherId) return;
+
+    await assignClassTeacher(teacherAssignForm.classId, teacherAssignForm.teacherId);
+    setMessage("负责老师已分配");
     await reload();
   }
 
@@ -488,7 +512,29 @@ export default function AdminStudentsPage() {
                   <article key={item.id} className="rounded-3xl bg-serenity-bg p-4 shadow-insetSoft">
                     <div className="font-semibold">{item.name}</div>
                     <div className="mt-2 text-sm text-serenity-muted">{item.campus?.name}</div>
-                    <div className="mt-3 text-sm">学生 {item._count?.students ?? 0} 人</div>
+                    <div className="mt-3 text-sm">学生 {item._count?.students ?? 0} 人 · 在读 {item.activeStudentCount ?? 0} 人 · 今日到校 {item.todayAttendanceCount ?? 0} 人</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.teachers?.length ? (
+                        item.teachers.map((row) => (
+                          <span key={row.teacher.id} className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">
+                            {row.teacher.name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">未分配老师</span>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {item.serviceDistribution?.length ? (
+                        item.serviceDistribution.map((service) => (
+                          <span key={service.id} className="rounded-full bg-serenity-blue px-3 py-1 text-xs font-semibold text-white">
+                            {service.name} {service.count}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-full bg-white/70 px-3 py-1 text-xs text-serenity-muted">暂无托管类型</span>
+                      )}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -599,6 +645,33 @@ export default function AdminStudentsPage() {
                 </button>
               </div>
             </form>
+
+            {user?.role === "admin" ? (
+              <form onSubmit={onAssignTeacher} className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+                <div className="flex items-center gap-3">
+                  <Users className="h-5 w-5 text-serenity-blue" />
+                  <h2 className="text-xl font-semibold">分配负责老师</h2>
+                </div>
+                <div className="mt-5 grid gap-3">
+                  <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={teacherAssignForm.classId} onChange={(event) => setTeacherAssignForm({ ...teacherAssignForm, classId: event.target.value })}>
+                    <option value="">选择班级</option>
+                    {classes.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={teacherAssignForm.teacherId} onChange={(event) => setTeacherAssignForm({ ...teacherAssignForm, teacherId: event.target.value })}>
+                    <option value="">选择老师</option>
+                    {teacherOptions.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}{item.phone ? ` ${item.phone}` : ""}</option>
+                    ))}
+                  </select>
+                  <button className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic">
+                    <Plus className="h-4 w-4" />
+                    保存老师分配
+                  </button>
+                </div>
+              </form>
+            ) : null}
 
             {message ? <div className="rounded-3xl bg-serenity-surface p-4 text-sm text-serenity-muted shadow-neumorphic">{message}</div> : null}
           </aside>

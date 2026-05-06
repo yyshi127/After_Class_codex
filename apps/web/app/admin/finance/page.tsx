@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Calculator, CreditCard, LogOut, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Calculator, CreditCard, Download, LogOut, RefreshCcw } from "lucide-react";
 import {
   BillingRecordItem,
   ClassItem,
@@ -15,6 +15,7 @@ import {
   listClassSettlements,
   listClasses,
   listStudents,
+  sendOverdueServiceReminder,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
 
@@ -124,6 +125,13 @@ export default function AdminFinancePage() {
     await reload();
   }
 
+  async function onSendOverdueReminder() {
+    if (!selectedStudentId) return;
+    await sendOverdueServiceReminder(selectedStudentId);
+    setMessage("逾期服务提醒已发送给绑定家长");
+    await reload();
+  }
+
   async function onGenerateSettlement() {
     if (!selectedClassId || user?.role !== "admin") return;
     await generateClassSettlement({
@@ -134,6 +142,35 @@ export default function AdminFinancePage() {
     });
     setMessage("班级核算已生成");
     await reload();
+  }
+
+  function onExportSettlements() {
+    if (!settlements.length) {
+      setMessage("暂无可导出的核算记录");
+      return;
+    }
+
+    const header = ["班级", "老师", "核算开始", "核算结束", "学生出勤次数", "收入", "老师课费", "班级毛利", "状态"];
+    const rows = settlements.map((item) => [
+      item.class?.name ?? item.classId,
+      item.teacher?.name ?? "",
+      new Date(item.periodStart).toLocaleDateString("zh-CN"),
+      new Date(item.periodEnd).toLocaleDateString("zh-CN"),
+      String(item.studentAttendCount),
+      (item.incomeCents / 100).toFixed(2),
+      (item.teacherFeeCents / 100).toFixed(2),
+      (item.grossProfitCents / 100).toFixed(2),
+      item.status === "draft" ? "草稿" : "已确认",
+    ]);
+    const csv = [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+    const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `班级核算-${periodStart}-${periodEnd}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage("班级核算 CSV 已导出");
   }
 
   function logout() {
@@ -200,6 +237,11 @@ export default function AdminFinancePage() {
                 <button onClick={() => void onCreateBilling()} className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic">
                   保存缴费记录
                 </button>
+                {user.role === "admin" ? (
+                  <button onClick={() => void onSendOverdueReminder()} className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-bg px-4 text-sm font-semibold shadow-insetSoft">
+                    手动发送逾期提醒
+                  </button>
+                ) : null}
               </div>
             </section>
 
@@ -248,7 +290,18 @@ export default function AdminFinancePage() {
             </article>
 
             <article className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
-              <h2 className="text-xl font-semibold">班级核算</h2>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <h2 className="text-xl font-semibold">班级核算</h2>
+                {user.role === "admin" ? (
+                  <button
+                    onClick={onExportSettlements}
+                    className="flex h-10 w-fit items-center gap-2 rounded-2xl bg-serenity-bg px-4 text-sm font-semibold shadow-insetSoft"
+                  >
+                    <Download className="h-4 w-4" />
+                    导出 CSV
+                  </button>
+                ) : null}
+              </div>
               {user.role === "admin" ? (
                 <div className="mt-5 grid gap-3">
                   {settlements.map((item) => (
@@ -271,4 +324,8 @@ export default function AdminFinancePage() {
       </div>
     </main>
   );
+}
+
+function csvCell(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
 }

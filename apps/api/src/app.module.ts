@@ -11,6 +11,7 @@ import { HomeworkModule } from "./homework/homework.module";
 import { FilesModule } from "./files/files.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { FinanceModule } from "./finance/finance.module";
+import { LeaveModule } from "./leave/leave.module";
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { FinanceModule } from "./finance/finance.module";
     FilesModule,
     NotificationsModule,
     FinanceModule,
+    LeaveModule,
   ],
   controllers: [AppController],
 })

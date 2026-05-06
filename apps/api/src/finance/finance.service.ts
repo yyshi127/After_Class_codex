@@ -1,7 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { AttendanceStatus, BillingStatus, ClassSettlementStatus, UserRole } from "@prisma/client";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateBillingRecordDto } from "./dto/create-billing-record.dto";
 import { GenerateClassSettlementDto } from "./dto/generate-class-settlement.dto";
@@ -12,6 +13,7 @@ export class FinanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessService: AccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   listBillingRecords(user: AuthenticatedUser, campusId?: string, studentId?: string) {
@@ -78,6 +80,37 @@ export class FinanceService {
       validFrom: service?.validFrom ?? null,
       validTo: service?.validTo ?? null,
       renewHint: service ? this.buildRenewHint(service.validTo) : "暂无服务有效期，请联系机构确认。",
+    };
+  }
+
+  async sendOverdueServiceReminder(user: AuthenticatedUser, studentId: string) {
+    this.assertStaff(user);
+    const student = await this.accessService.findAccessibleStudent(user, studentId);
+    const service = await this.prisma.studentService.findFirst({
+      where: { studentId: student.id },
+      include: { serviceType: { select: { name: true } } },
+      orderBy: { validTo: "desc" },
+    });
+
+    if (!service) {
+      throw new NotFoundException("Student service not found");
+    }
+    if (service.validTo.getTime() >= Date.now()) {
+      throw new BadRequestException("Service has not expired yet");
+    }
+
+    const validToDate = service.validTo.toISOString().slice(0, 10);
+    await this.notificationsService.createForStudentGuardians({
+      studentId: student.id,
+      title: "服务逾期提醒",
+      content: `${student.name} 的${service.serviceType.name}已于 ${validToDate} 到期，请尽快联系老师续费。`,
+    });
+
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      validTo: service.validTo,
+      notifiedAt: new Date(),
     };
   }
 
