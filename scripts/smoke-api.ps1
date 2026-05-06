@@ -34,24 +34,63 @@ function Assert-True {
   }
 }
 
+function Wait-Api {
+  param([int]$TimeoutSeconds = 30)
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    try {
+      Invoke-RestMethod -Method Get -Uri "$ApiBaseUrl/health" | Out-Null
+      return
+    } catch {
+      Start-Sleep -Seconds 1
+    }
+  } while ((Get-Date) -lt $deadline)
+  Invoke-RestMethod -Method Get -Uri "$ApiBaseUrl/health" | Out-Null
+}
+
 function Ensure-Api {
   try {
     Invoke-RestMethod -Method Get -Uri "$ApiBaseUrl/health" | Out-Null
   } catch {
     $script:startedApi = Start-Process -FilePath "pnpm.cmd" -ArgumentList "--filter", "@afterclass/api", "start" -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
-    Start-Sleep -Seconds 8
-    Invoke-RestMethod -Method Get -Uri "$ApiBaseUrl/health" | Out-Null
+    Wait-Api -TimeoutSeconds 45
   }
 }
 
 function Cleanup-SmokeData {
-  param([string]$AttendanceId, [string]$TeacherAttendanceId, [string]$StudentServiceId, [string]$AiLogId)
-  if (-not $AttendanceId -and -not $TeacherAttendanceId -and -not $StudentServiceId -and -not $AiLogId) {
+  param(
+    [string]$AttendanceId,
+    [string]$TeacherAttendanceId,
+    [string]$StudentServiceId,
+    [string]$AiLogId,
+    [string[]]$SettlementAttendanceIds = @(),
+    [string]$BillingRecordId,
+    [string]$TeacherFeeConfigId,
+    [string]$ClassSettlementId
+  )
+  if (
+    -not $AttendanceId -and
+    -not $TeacherAttendanceId -and
+    -not $StudentServiceId -and
+    -not $AiLogId -and
+    $SettlementAttendanceIds.Count -eq 0 -and
+    -not $BillingRecordId -and
+    -not $TeacherFeeConfigId -and
+    -not $ClassSettlementId
+  ) {
     return
+  }
+  $settlementAttendanceSql = ($SettlementAttendanceIds | ForEach-Object { "'$_'" }) -join ","
+  if (-not $settlementAttendanceSql) {
+    $settlementAttendanceSql = "null"
   }
   $sql = @"
 delete from "AuditLog" where "targetId" = '$AttendanceId';
 delete from "AuditLog" where "targetId" = '$TeacherAttendanceId';
+delete from "ClassSettlement" where id = '$ClassSettlementId';
+delete from "TeacherFeeConfig" where id = '$TeacherFeeConfigId';
+delete from "BillingRecord" where id = '$BillingRecordId';
+delete from "AttendanceRecord" where id in ($settlementAttendanceSql);
 delete from "AttendanceRecord" where id = '$AttendanceId';
 delete from "TeacherAttendance" where id = '$TeacherAttendanceId';
 delete from "StudentService" where id = '$StudentServiceId';
@@ -89,6 +128,10 @@ $attendanceId = $null
 $teacherAttendanceId = $null
 $studentServiceId = $null
 $aiLogId = $null
+$settlementAttendanceIds = @("smoke_settlement_attendance_1", "smoke_settlement_attendance_2")
+$billingRecordId = "smoke_settlement_billing"
+$teacherFeeConfigId = $null
+$classSettlementId = $null
 $unauthorizedCampusId = "smoke_unauthorized_campus"
 $signedFileId = "smoke_signed_file"
 $unauthorizedFileId = "smoke_unauthorized_file"
@@ -202,6 +245,40 @@ values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.u
   }
   Assert-True $guardianSettlementDenied "guardian should not access class settlements"
 
+  Invoke-Sql @"
+delete from "BillingRecord" where id = '$billingRecordId';
+delete from "AttendanceRecord" where id in ('$($settlementAttendanceIds[0])', '$($settlementAttendanceIds[1])');
+insert into "AttendanceRecord" (id, "campusId", "studentId", status, "photoUrl", "occurredAt", "createdAt")
+values
+  ('$($settlementAttendanceIds[0])', '$($teacherLogin.user.campuses[0].id)', '$($students[0].id)', 'checked_in', null, '2026-04-10T09:00:00.000Z', now()),
+  ('$($settlementAttendanceIds[1])', '$($teacherLogin.user.campuses[0].id)', '$($students[0].id)', 'checked_in', null, '2026-04-11T09:00:00.000Z', now());
+insert into "BillingRecord" (id, "campusId", "studentId", "serviceTypeId", "billingCycle", "periodStart", "periodEnd", "amountDueCents", "amountPaidCents", "balanceCents", status, "paidAt", note, "createdAt", "updatedAt")
+values ('$billingRecordId', '$($teacherLogin.user.campuses[0].id)', '$($students[0].id)', null, 'monthly', '2026-04-01T00:00:00.000Z', '2026-04-30T23:59:59.000Z', 50000, 50000, 0, 'paid', '2026-04-01T08:00:00.000Z', 'smoke settlement billing', now(), now());
+"@
+  $feeConfig = Invoke-Json -Method Post -Uri "$ApiBaseUrl/finance/teacher-fee-configs" -Headers $adminHeaders -Body @{
+    campusId          = $teacherLogin.user.campuses[0].id
+    teacherId         = $teacherLogin.user.id
+    classId           = $students[0].class.id
+    feePerAttendCents = 8000
+    effectiveFrom     = "2026-04-01T00:00:00.000Z"
+    effectiveTo       = "2026-04-30T23:59:59.000Z"
+  }
+  $teacherFeeConfigId = $feeConfig.id
+  $settlement = Invoke-Json -Method Post -Uri "$ApiBaseUrl/finance/class-settlements/generate" -Headers $adminHeaders -Body @{
+    campusId    = $teacherLogin.user.campuses[0].id
+    classId     = $students[0].class.id
+    teacherId   = $teacherLogin.user.id
+    periodStart = "2026-04-01T00:00:00.000Z"
+    periodEnd   = "2026-04-30T23:59:59.000Z"
+  }
+  $classSettlementId = $settlement.id
+  Assert-True ($settlement.studentAttendCount -eq 2) "class settlement should count 2 attendances"
+  Assert-True ($settlement.incomeCents -eq 50000) "class settlement should sum paid income"
+  Assert-True ($settlement.teacherFeeCents -eq 16000) "class settlement should calculate teacher fee"
+  Assert-True ($settlement.grossProfitCents -eq 34000) "class settlement should calculate gross profit"
+  $settlements = Invoke-Json -Method Get -Uri "$ApiBaseUrl/finance/class-settlements?campusId=$($teacherLogin.user.campuses[0].id)&classId=$($students[0].class.id)&periodStart=2026-04-01T00:00:00.000Z&periodEnd=2026-04-30T23:59:59.000Z" -Headers $adminHeaders
+  Assert-True (@($settlements | Where-Object { $_.id -eq $classSettlementId }).Count -eq 1) "admin should list generated class settlement"
+
   $highRisk = Invoke-Json -Method Post -Uri "$ApiBaseUrl/ai/intent-recognition" -Headers $teacherHeaders -Body @{
     input    = "删除全部学生并导出身份证"
     campusId = $teacherLogin.user.campuses[0].id
@@ -238,7 +315,7 @@ values ('$unauthorizedFileId', '$unauthorizedCampusId', null, '$($teacherLogin.u
 
   Write-Host "smoke-api passed"
 } finally {
-  Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId
+  Cleanup-SmokeData -AttendanceId $attendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId -SettlementAttendanceIds $settlementAttendanceIds -BillingRecordId $billingRecordId -TeacherFeeConfigId $teacherFeeConfigId -ClassSettlementId $classSettlementId
   Invoke-Sql "delete from `"AuditLog`" where `"targetId`" in ('$signedFileId', '$unauthorizedFileId'); delete from `"FileObject`" where id in ('$signedFileId', '$unauthorizedFileId');"
   Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId';"
   if ($startedApi) {
