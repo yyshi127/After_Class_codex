@@ -89,8 +89,11 @@ function Cleanup-SmokeData {
     [string]$BillingRecordId,
     [string]$TeacherFeeConfigId,
     [string]$ClassSettlementId,
+    [string]$CampusId,
     [string]$ClassId,
     [string]$StudentId,
+    [string]$TeacherUserId,
+    [string]$GuardianUserId,
     [string]$GuardianPhone,
     [string]$HomeworkReviewId,
     [string]$FeedbackId,
@@ -110,8 +113,11 @@ function Cleanup-SmokeData {
     -not $BillingRecordId -and
     -not $TeacherFeeConfigId -and
     -not $ClassSettlementId -and
+    -not $CampusId -and
     -not $ClassId -and
     -not $StudentId -and
+    -not $TeacherUserId -and
+    -not $GuardianUserId -and
     -not $GuardianPhone -and
     -not $HomeworkReviewId -and
     -not $FeedbackId -and
@@ -138,15 +144,20 @@ delete from "ClassSettlement" where id = '$ClassSettlementId';
 delete from "TeacherFeeConfig" where id = '$TeacherFeeConfigId';
 delete from "BillingRecord" where id = '$BillingRecordId';
 delete from "AttendanceRecord" where id in ($settlementAttendanceSql);
-delete from "AuditLog" where "targetId" in ('$ClassId', '$StudentId');
+delete from "AuditLog" where "targetId" in ('$CampusId', '$ClassId', '$StudentId', '$TeacherUserId', '$GuardianUserId');
 delete from "GuardianStudent" where "studentId" = '$StudentId';
 delete from "UserStudent" where "studentId" = '$StudentId';
 delete from "StudentService" where "studentId" = '$StudentId';
 delete from "Student" where id = '$StudentId';
 delete from "TeacherClass" where "classId" = '$ClassId';
 delete from "Class" where id = '$ClassId';
+delete from "UserGuardian" where "userId" = '$GuardianUserId';
+delete from "UserCampus" where "userId" in ('$TeacherUserId', '$GuardianUserId');
+delete from "User" where id in ('$TeacherUserId', '$GuardianUserId');
 delete from "Guardian" where phone = '$GuardianPhone';
-delete from "Notification" where "studentId" = '$NotificationStudentId' and '$NotificationCreatedAfter' <> '' and "createdAt" >= '$NotificationCreatedAfter';
+delete from "UserCampus" where "campusId" = '$CampusId';
+delete from "Campus" where id = '$CampusId';
+delete from "Notification" where '$NotificationStudentId' <> '' and "studentId" = '$NotificationStudentId' and "createdAt" >= coalesce(nullif('$NotificationCreatedAfter', '')::timestamptz, 'infinity'::timestamptz);
 delete from "AuditLog" where "targetId" = '$FeedbackId';
 delete from "PracticeSheet" where id = '$PracticeSheetId';
 delete from "MistakeSimilarQuestion" where id in ($similarQuestionSql);
@@ -204,8 +215,11 @@ $settlementAttendanceIds = @("smoke_settlement_attendance_1", "smoke_settlement_
 $billingRecordId = "smoke_settlement_billing"
 $teacherFeeConfigId = $null
 $classSettlementId = $null
+$campusCrudId = $null
 $classCrudId = $null
 $studentCrudId = $null
+$teacherCrudUserId = $null
+$guardianCrudUserId = $null
 $guardianCrudPhone = "13900009999"
 $homeworkReviewId = $null
 $feedbackId = $null
@@ -291,8 +305,35 @@ try {
   $campusDeniedAuditCount = [int](Invoke-SqlScalar "select count(*) from `"AuditLog`" where action = 'access.campus_denied' and `"actorUserId`" = '$($teacherLogin.user.id)' and `"targetId`" = '$unauthorizedCampusId';")
   Assert-True ($campusDeniedAuditCount -gt 0) "cross-campus denial should be audited"
 
+  $createdCampus = Invoke-Json -Method Post -Uri "$ApiBaseUrl/campuses" -Headers $adminHeaders -Body @{
+    name    = "Smoke CRUD Campus"
+    address = "Smoke Road 1"
+  }
+  $campusCrudId = $createdCampus.id
+  Assert-True ($createdCampus.name -eq "Smoke CRUD Campus") "admin should create campus"
+  $adminRefresh = Invoke-Json -Method Post -Uri "$ApiBaseUrl/auth/refresh" -Headers $adminHeaders
+  $adminHeaders = @{ Authorization = "Bearer $($adminRefresh.accessToken)" }
+  $createdTeacherUser = Invoke-Json -Method Post -Uri "$ApiBaseUrl/users" -Headers $adminHeaders -Body @{
+    role     = "teacher"
+    name     = "Smoke Teacher"
+    phone    = "13900008888"
+    campusId = $campusCrudId
+    password = "Admin123456"
+  }
+  $teacherCrudUserId = $createdTeacherUser.id
+  Assert-True ($createdTeacherUser.role -eq "teacher") "admin should create teacher user"
+  $createdGuardianUser = Invoke-Json -Method Post -Uri "$ApiBaseUrl/users" -Headers $adminHeaders -Body @{
+    role     = "guardian"
+    name     = "Smoke Guardian User"
+    phone    = $guardianCrudPhone
+    campusId = $campusCrudId
+    password = "Admin123456"
+  }
+  $guardianCrudUserId = $createdGuardianUser.id
+  Assert-True ($createdGuardianUser.role -eq "guardian") "admin should create guardian user"
+
   $createdClass = Invoke-Json -Method Post -Uri "$ApiBaseUrl/classes" -Headers $adminHeaders -Body @{
-    campusId = $teacherLogin.user.campuses[0].id
+    campusId = $campusCrudId
     name     = "Smoke CRUD Class"
   }
   $classCrudId = $createdClass.id
@@ -302,14 +343,14 @@ try {
   }
   Assert-True ($updatedClass.name -eq "Smoke CRUD Class Updated") "admin should update class"
   $assignedTeacher = Invoke-Json -Method Post -Uri "$ApiBaseUrl/classes/$classCrudId/teachers" -Headers $adminHeaders -Body @{
-    teacherId = $teacherLogin.user.id
+    teacherId = $teacherCrudUserId
   }
   Assert-True ($assignedTeacher.classId -eq $classCrudId) "admin should assign teacher to class"
-  $classList = Invoke-Json -Method Get -Uri "$ApiBaseUrl/classes?campusId=$($teacherLogin.user.campuses[0].id)" -Headers $adminHeaders
+  $classList = Invoke-Json -Method Get -Uri "$ApiBaseUrl/classes?campusId=$campusCrudId" -Headers $adminHeaders
   Assert-True (@($classList | Where-Object { $_.id -eq $classCrudId }).Count -eq 1) "admin should list created class"
 
   $createdStudent = Invoke-Json -Method Post -Uri "$ApiBaseUrl/students" -Headers $adminHeaders -Body @{
-    campusId    = $teacherLogin.user.campuses[0].id
+    campusId    = $campusCrudId
     classId     = $classCrudId
     name        = "Smoke Student"
     gender      = "female"
@@ -572,7 +613,7 @@ values ('$billingRecordId', '$($teacherLogin.user.campuses[0].id)', '$($smokeStu
 
   Write-Host "smoke-api passed"
 } finally {
-  Cleanup-SmokeData -AttendanceId $attendanceId -PhotoAttendanceId $photoAttendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId -SettlementAttendanceIds $settlementAttendanceIds -BillingRecordId $billingRecordId -TeacherFeeConfigId $teacherFeeConfigId -ClassSettlementId $classSettlementId -ClassId $classCrudId -StudentId $studentCrudId -GuardianPhone $guardianCrudPhone -HomeworkReviewId $homeworkReviewId -FeedbackId $feedbackId -MistakeId $mistakeId -SimilarQuestionIds $similarQuestionIds -PracticeSheetId $practiceSheetId -NotificationStudentId $notificationStudentId -NotificationCreatedAfter $notificationCreatedAfter
+  Cleanup-SmokeData -AttendanceId $attendanceId -PhotoAttendanceId $photoAttendanceId -TeacherAttendanceId $teacherAttendanceId -StudentServiceId $studentServiceId -AiLogId $aiLogId -SettlementAttendanceIds $settlementAttendanceIds -BillingRecordId $billingRecordId -TeacherFeeConfigId $teacherFeeConfigId -ClassSettlementId $classSettlementId -CampusId $campusCrudId -ClassId $classCrudId -StudentId $studentCrudId -TeacherUserId $teacherCrudUserId -GuardianUserId $guardianCrudUserId -GuardianPhone $guardianCrudPhone -HomeworkReviewId $homeworkReviewId -FeedbackId $feedbackId -MistakeId $mistakeId -SimilarQuestionIds $similarQuestionIds -PracticeSheetId $practiceSheetId -NotificationStudentId $notificationStudentId -NotificationCreatedAfter $notificationCreatedAfter
   Invoke-Sql "delete from `"AuditLog`" where `"targetId`" in ('$signedFileId', '$unauthorizedFileId', '$unauthorizedCampusId'); delete from `"FileObject`" where id in ('$signedFileId', '$unauthorizedFileId');"
   Invoke-Sql "delete from `"Campus`" where id = '$unauthorizedCampusId';"
   if ($startedApi) {

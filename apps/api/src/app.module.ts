@@ -14,6 +14,8 @@ import { FinanceModule } from "./finance/finance.module";
 import { LeaveModule } from "./leave/leave.module";
 import { AiModule } from "./ai/ai.module";
 import { AuditLogModule } from "./audit-log/audit-log.module";
+import { CampusesModule } from "./campuses/campuses.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { AuditLogModule } from "./audit-log/audit-log.module";
     LeaveModule,
     AiModule,
     AuditLogModule,
+    CampusesModule,
+    UsersModule,
   ],
   controllers: [AppController],
 })
