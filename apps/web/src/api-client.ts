@@ -42,6 +42,12 @@ export type StudentItem = {
   } | null;
   campus?: CampusOption;
   class?: { id: string; name: string } | null;
+  guardians?: Array<{
+    id: string;
+    name: string;
+    phone: string;
+    relation: string | null;
+  }>;
 };
 
 export type StudentServiceItem = NonNullable<StudentItem["currentService"]>;
@@ -558,6 +564,26 @@ export function configureStudentService(
 
 export function getStudentIdCardDetail(studentId: string) {
   return apiRequest<StudentIdCardDetail>(`/students/${encodeURIComponent(studentId)}/id-card`);
+}
+
+export function bindStudentGuardian(
+  studentId: string,
+  payload: {
+    name: string;
+    phone: string;
+    relation?: string;
+  },
+) {
+  return apiRequest<{
+    id: string;
+    name: string;
+    phone: string;
+    relation: string | null;
+    linkedExistingGuardianUser: boolean;
+  }>(`/students/${encodeURIComponent(studentId)}/guardians`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getAdminDashboard() {

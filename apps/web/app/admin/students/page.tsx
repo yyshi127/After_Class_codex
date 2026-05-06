@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Building2, CalendarDays, Plus, RefreshCcw, School, UserRoundPlus, Users } from "lucide-react";
 import {
+  bindStudentGuardian,
   ClassItem,
   StudentItem,
   configureStudentService,
@@ -122,6 +123,12 @@ export default function AdminStudentsPage() {
     validFrom: todayIsoDate(),
     validTo: todayIsoDate(),
   });
+  const [guardianForm, setGuardianForm] = useState({
+    studentId: "",
+    name: "",
+    phone: "",
+    relation: "母亲",
+  });
   const [className, setClassName] = useState("");
 
   const campuses = useMemo(() => user?.campuses ?? [], [user]);
@@ -191,6 +198,7 @@ export default function AdminStudentsPage() {
       setClasses(classRows);
       setStudentSummaries(summaries);
       setServiceForm((prev) => ({ ...prev, studentId: prev.studentId || studentRows[0]?.id || "" }));
+      setGuardianForm((prev) => ({ ...prev, studentId: prev.studentId || studentRows[0]?.id || "" }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -237,6 +245,20 @@ export default function AdminStudentsPage() {
       validTo: serviceForm.validTo,
     });
     setMessage("托管类型与服务有效期已保存");
+    await reload();
+  }
+
+  async function onBindGuardian(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!guardianForm.studentId || !guardianForm.name || !guardianForm.phone) return;
+
+    const result = await bindStudentGuardian(guardianForm.studentId, {
+      name: guardianForm.name,
+      phone: guardianForm.phone,
+      relation: guardianForm.relation,
+    });
+    setGuardianForm((prev) => ({ ...prev, name: "", phone: "", relation: "母亲" }));
+    setMessage(result.linkedExistingGuardianUser ? "家长资料已绑定，并已关联现有家长账号" : "家长资料已绑定");
     await reload();
   }
 
@@ -375,13 +397,14 @@ export default function AdminStudentsPage() {
               </div>
 
               <div className="mt-5 overflow-x-auto rounded-3xl bg-serenity-bg shadow-insetSoft">
-                <div className="min-w-[1180px]">
-                  <div className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.3fr_1.2fr_0.8fr] gap-3 border-b border-white/70 px-5 py-3 text-sm font-semibold text-serenity-muted">
+                <div className="min-w-[1320px]">
+                  <div className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.2fr_1.3fr_1.2fr_0.8fr] gap-3 border-b border-white/70 px-5 py-3 text-sm font-semibold text-serenity-muted">
                     <span>姓名</span>
                     <span>年级</span>
                     <span>班级</span>
                     <span>托管服务</span>
                     <span>服务有效期</span>
+                    <span>绑定家长</span>
                     <span>考勤/作业/缴费摘要</span>
                     <span>身份证号</span>
                     <span>状态</span>
@@ -389,7 +412,7 @@ export default function AdminStudentsPage() {
                   {students.map((student) => (
                     <div
                       key={student.id}
-                      className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.3fr_1.2fr_0.8fr] gap-3 px-5 py-4 text-sm"
+                      className="grid grid-cols-[1fr_0.7fr_0.9fr_1fr_1fr_1.2fr_1.3fr_1.2fr_0.8fr] gap-3 px-5 py-4 text-sm"
                     >
                       <span className="font-medium">{student.name}</span>
                       <span>{student.grade || "-"}</span>
@@ -405,6 +428,17 @@ export default function AdminStudentsPage() {
                           </>
                         ) : (
                           "-"
+                        )}
+                      </span>
+                      <span className="grid gap-1 text-xs leading-5 text-serenity-muted">
+                        {student.guardians?.length ? (
+                          student.guardians.map((guardian) => (
+                            <span key={guardian.id}>
+                              {guardian.name} {guardian.relation ? `(${guardian.relation})` : ""} {guardian.phone}
+                            </span>
+                          ))
+                        ) : (
+                          <span>未绑定</span>
                         )}
                       </span>
                       <span className="grid gap-1 text-xs leading-5 text-serenity-muted">
@@ -486,41 +520,70 @@ export default function AdminStudentsPage() {
             </form>
 
             {user?.role === "admin" ? (
-              <form onSubmit={onConfigureService} className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
-                <div className="flex items-center gap-3">
-                  <CalendarDays className="h-5 w-5 text-serenity-blue" />
-                  <h2 className="text-xl font-semibold">配置服务</h2>
-                </div>
-                <div className="mt-5 grid gap-3">
-                  <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={serviceForm.studentId} onChange={(event) => setServiceForm({ ...serviceForm, studentId: event.target.value })}>
-                    <option value="">选择学生</option>
-                    {students.map((item) => (
-                      <option key={item.id} value={item.id}>{item.name}</option>
-                    ))}
-                  </select>
-                  <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={serviceForm.serviceTypeCode} onChange={(event) => setServiceForm({ ...serviceForm, serviceTypeCode: event.target.value })}>
-                    {serviceTypeCards.map((item) => (
-                      <option key={item.code} value={item.code}>{item.name}</option>
-                    ))}
-                  </select>
-                  <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={serviceForm.billingCycle} onChange={(event) => setServiceForm({ ...serviceForm, billingCycle: event.target.value as "monthly" | "semester" })}>
-                    <option value="monthly">月缴</option>
-                    <option value="semester">学期缴</option>
-                  </select>
-                  <label className="text-xs font-semibold text-serenity-muted">
-                    服务开始
-                    <input type="date" className="mt-2 h-11 w-full rounded-2xl bg-serenity-bg px-4 text-sm text-serenity-ink shadow-insetSoft outline-none" value={serviceForm.validFrom} onChange={(event) => setServiceForm({ ...serviceForm, validFrom: event.target.value })} />
-                  </label>
-                  <label className="text-xs font-semibold text-serenity-muted">
-                    服务到期
-                    <input type="date" className="mt-2 h-11 w-full rounded-2xl bg-serenity-bg px-4 text-sm text-serenity-ink shadow-insetSoft outline-none" value={serviceForm.validTo} onChange={(event) => setServiceForm({ ...serviceForm, validTo: event.target.value })} />
-                  </label>
-                  <button className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic">
-                    <Plus className="h-4 w-4" />
-                    保存托管服务
-                  </button>
-                </div>
-              </form>
+              <>
+                <form onSubmit={onBindGuardian} className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+                  <div className="flex items-center gap-3">
+                    <Users className="h-5 w-5 text-serenity-blue" />
+                    <h2 className="text-xl font-semibold">绑定家长</h2>
+                  </div>
+                  <div className="mt-5 grid gap-3">
+                    <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={guardianForm.studentId} onChange={(event) => setGuardianForm({ ...guardianForm, studentId: event.target.value })}>
+                      <option value="">选择学生</option>
+                      {students.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                    <input className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" placeholder="家长姓名" value={guardianForm.name} onChange={(event) => setGuardianForm({ ...guardianForm, name: event.target.value })} />
+                    <input className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" placeholder="手机号" value={guardianForm.phone} onChange={(event) => setGuardianForm({ ...guardianForm, phone: event.target.value })} />
+                    <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={guardianForm.relation} onChange={(event) => setGuardianForm({ ...guardianForm, relation: event.target.value })}>
+                      <option value="母亲">母亲</option>
+                      <option value="父亲">父亲</option>
+                      <option value="监护人">监护人</option>
+                      <option value="其他">其他</option>
+                    </select>
+                    <button className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic">
+                      <Plus className="h-4 w-4" />
+                      保存家长绑定
+                    </button>
+                  </div>
+                </form>
+
+                <form onSubmit={onConfigureService} className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">
+                  <div className="flex items-center gap-3">
+                    <CalendarDays className="h-5 w-5 text-serenity-blue" />
+                    <h2 className="text-xl font-semibold">配置服务</h2>
+                  </div>
+                  <div className="mt-5 grid gap-3">
+                    <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={serviceForm.studentId} onChange={(event) => setServiceForm({ ...serviceForm, studentId: event.target.value })}>
+                      <option value="">选择学生</option>
+                      {students.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                    <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={serviceForm.serviceTypeCode} onChange={(event) => setServiceForm({ ...serviceForm, serviceTypeCode: event.target.value })}>
+                      {serviceTypeCards.map((item) => (
+                        <option key={item.code} value={item.code}>{item.name}</option>
+                      ))}
+                    </select>
+                    <select className="h-11 rounded-2xl bg-serenity-bg px-4 shadow-insetSoft outline-none" value={serviceForm.billingCycle} onChange={(event) => setServiceForm({ ...serviceForm, billingCycle: event.target.value as "monthly" | "semester" })}>
+                      <option value="monthly">月缴</option>
+                      <option value="semester">学期缴</option>
+                    </select>
+                    <label className="text-xs font-semibold text-serenity-muted">
+                      服务开始
+                      <input type="date" className="mt-2 h-11 w-full rounded-2xl bg-serenity-bg px-4 text-sm text-serenity-ink shadow-insetSoft outline-none" value={serviceForm.validFrom} onChange={(event) => setServiceForm({ ...serviceForm, validFrom: event.target.value })} />
+                    </label>
+                    <label className="text-xs font-semibold text-serenity-muted">
+                      服务到期
+                      <input type="date" className="mt-2 h-11 w-full rounded-2xl bg-serenity-bg px-4 text-sm text-serenity-ink shadow-insetSoft outline-none" value={serviceForm.validTo} onChange={(event) => setServiceForm({ ...serviceForm, validTo: event.target.value })} />
+                    </label>
+                    <button className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-serenity-blue px-4 text-sm font-semibold text-white shadow-neumorphic">
+                      <Plus className="h-4 w-4" />
+                      保存托管服务
+                    </button>
+                  </div>
+                </form>
+              </>
             ) : null}
 
             <form onSubmit={onCreateClass} className="rounded-[28px] bg-serenity-surface p-5 shadow-neumorphic">

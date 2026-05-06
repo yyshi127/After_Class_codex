@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import type { AuthenticatedUser } from "../auth/types";
 import { AccessService } from "../access/access.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { BindGuardianDto } from "./dto/bind-guardian.dto";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { UpdateStudentDto } from "./dto/update-student.dto";
 import { UpsertStudentServiceDto } from "./dto/upsert-student-service.dto";
@@ -55,18 +56,35 @@ export class StudentsService {
             },
           },
         },
+        guardians: {
+          select: {
+            relation: true,
+            guardian: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+              },
+            },
+          },
+          orderBy: { guardian: { createdAt: "asc" } },
+        },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
 
-    return students.map(({ idCardNoEncrypted, services, ...student }) => {
+    return students.map(({ idCardNoEncrypted, services, guardians, ...student }) => {
       const idCardNo = decryptIdCard(idCardNoEncrypted);
       return {
         ...student,
         idCardNoMasked: maskIdCard(idCardNo),
         idCardNoFull: user.role === UserRole.admin ? idCardNo : undefined,
         currentService: services[0] ?? null,
+        guardians: guardians.map(({ relation, guardian }) => ({
+          ...guardian,
+          relation,
+        })),
       };
     });
   }
@@ -217,6 +235,90 @@ export class StudentsService {
       },
       include: { serviceType: true },
     });
+  }
+
+  async bindGuardian(user: AuthenticatedUser, id: string, dto: BindGuardianDto) {
+    const student = await this.accessService.findAccessibleStudent(user, id);
+    this.accessService.assertCampusAccess(user, student.campusId);
+
+    const guardian = await this.prisma.guardian.upsert({
+      where: { phone: dto.phone },
+      update: { name: dto.name },
+      create: {
+        name: dto.name,
+        phone: dto.phone,
+      },
+    });
+
+    await this.prisma.guardianStudent.upsert({
+      where: {
+        guardianId_studentId: {
+          guardianId: guardian.id,
+          studentId: student.id,
+        },
+      },
+      update: { relation: dto.relation },
+      create: {
+        guardianId: guardian.id,
+        studentId: student.id,
+        relation: dto.relation,
+      },
+    });
+
+    const guardianUser = await this.prisma.user.findFirst({
+      where: {
+        phone: dto.phone,
+        role: UserRole.guardian,
+      },
+      select: { id: true },
+    });
+
+    if (guardianUser) {
+      await this.prisma.userGuardian.upsert({
+        where: { userId: guardianUser.id },
+        update: { guardianId: guardian.id },
+        create: {
+          userId: guardianUser.id,
+          guardianId: guardian.id,
+        },
+      });
+      await this.prisma.userCampus.upsert({
+        where: {
+          userId_campusId: {
+            userId: guardianUser.id,
+            campusId: student.campusId,
+          },
+        },
+        update: {},
+        create: {
+          userId: guardianUser.id,
+          campusId: student.campusId,
+        },
+      });
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        campusId: student.campusId,
+        actorUserId: user.id,
+        action: "student.guardian_bind",
+        targetType: "student",
+        targetId: student.id,
+        metadata: {
+          guardianId: guardian.id,
+          relation: dto.relation,
+          linkedExistingGuardianUser: Boolean(guardianUser),
+        },
+      },
+    });
+
+    return {
+      id: guardian.id,
+      name: guardian.name,
+      phone: guardian.phone,
+      relation: dto.relation ?? null,
+      linkedExistingGuardianUser: Boolean(guardianUser),
+    };
   }
 
   private async assertTeacherClassWritable(user: AuthenticatedUser, classId: string | undefined, campusId: string) {

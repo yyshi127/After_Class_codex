@@ -5,6 +5,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import type { AuthenticatedUser } from "../auth/types";
+import { BindGuardianDto } from "./dto/bind-guardian.dto";
 import { CreateStudentDto } from "./dto/create-student.dto";
 import { UpdateStudentDto } from "./dto/update-student.dto";
 import { UpsertStudentServiceDto } from "./dto/upsert-student-service.dto";
@@ -47,5 +48,11 @@ export class StudentsController {
   @Post(":id/service")
   upsertService(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: UpsertStudentServiceDto) {
     return this.studentsService.upsertService(user, id, dto);
+  }
+
+  @Roles(UserRole.admin)
+  @Post(":id/guardians")
+  bindGuardian(@CurrentUser() user: AuthenticatedUser, @Param("id") id: string, @Body() dto: BindGuardianDto) {
+    return this.studentsService.bindGuardian(user, id, dto);
   }
 }

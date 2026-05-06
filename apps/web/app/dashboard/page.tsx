@@ -30,6 +30,7 @@ const roleLabels: Record<AuthUser["role"], string> = {
 const roleLanding: Record<AuthUser["role"], Array<{ title: string; text: string; href: string }>> = {
   admin: [
     { title: "学生与班级", text: "维护学生档案、班级、校区和托管服务信息。", href: "/admin/students" },
+    { title: "作业与点评", text: "查看作业原图、批改图、AI 圈错建议和三类点评。", href: "/admin/homework" },
     { title: "财务核算", text: "查看缴费记录、服务到期、班级收入和老师课费。", href: "/admin/finance" },
   ],
   teacher: [
@@ -50,6 +51,7 @@ const navItems = [
   { icon: Home, label: "首页", href: "/dashboard" },
   { icon: Users, label: "学生与班级", href: "/admin/students" },
   { icon: CalendarCheck2, label: "考勤管理", href: "/admin/attendance" },
+  { icon: BookOpenCheck, label: "作业管理", href: "/admin/homework" },
   { icon: ClipboardCheck, label: "老师工作台", href: "/teacher/today" },
   { icon: BookOpenCheck, label: "作业反馈", href: "/teacher/homework" },
   { icon: CreditCard, label: "财务核算", href: "/admin/finance" },
