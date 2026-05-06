@@ -511,6 +511,45 @@ export function publishFeedback(payload: { studentId: string; behavior: string; 
   });
 }
 
+async function compressImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+
+  const maxSide = 1600;
+  const quality = 0.82;
+
+  try {
+    const imageUrl = URL.createObjectURL(file);
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Image load failed"));
+      element.src = imageUrl;
+    });
+
+    const ratio = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+    const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")?.drawImage(image, 0, 0, width, height);
+    URL.revokeObjectURL(imageUrl);
+
+    const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, quality));
+    if (!blob || blob.size >= file.size) return file;
+
+    const extension = outputType === "image/png" ? "png" : "jpg";
+    const filename = file.name.replace(/\.[^.]+$/, "") || "image";
+    return new File([blob], `${filename}.${extension}`, {
+      type: outputType,
+      lastModified: Date.now(),
+    });
+  } catch {
+    return file;
+  }
+}
+
 export async function uploadImage(payload: {
   file: File;
   campusId: string;
@@ -520,8 +559,9 @@ export async function uploadImage(payload: {
   businessId?: string;
 }) {
   const token = getStoredToken();
+  const uploadFile = await compressImageFile(payload.file);
   const formData = new FormData();
-  formData.set("file", payload.file);
+  formData.set("file", uploadFile);
   formData.set("campusId", payload.campusId);
   if (payload.studentId) formData.set("studentId", payload.studentId);
   formData.set("type", payload.type);
