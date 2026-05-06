@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { BookOpenCheck, CalendarCheck2, Home, Image as ImageIcon, LogOut, MessageCircle, RefreshCcw, UserRound } from "lucide-react";
 import {
   FeedbackItem,
@@ -39,6 +40,7 @@ const reviewStatusLabels: Record<HomeworkReviewItem["status"], string> = {
 
 export default function ParentHomePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");
@@ -66,6 +68,7 @@ export default function ParentHomePage() {
   const activeStudent = students.find((item) => item.id === activeStudentId);
   const latestAttendance = attendanceRows[0];
   const latestFeedback = feedbackRows[0];
+  const navClass = (href: string) => `grid justify-items-center gap-1 ${pathname === href ? "text-serenity-blue" : ""}`;
 
   useEffect(() => {
     const token = getStoredToken();
@@ -411,10 +414,10 @@ export default function ParentHomePage() {
 
       <nav className="fixed inset-x-0 bottom-0 mx-auto max-w-md bg-serenity-surface/95 px-6 py-3 shadow-neumorphic">
         <div className="grid grid-cols-4 gap-2 text-xs text-serenity-muted">
-          <button className="grid justify-items-center gap-1 text-serenity-blue"><Home className="h-5 w-5" />首页</button>
-          <button className="grid justify-items-center gap-1"><BookOpenCheck className="h-5 w-5" />作业</button>
-          <button className="grid justify-items-center gap-1"><MessageCircle className="h-5 w-5" />消息</button>
-          <button className="grid justify-items-center gap-1"><UserRound className="h-5 w-5" />我的</button>
+          <Link href="/parent/home" className={navClass("/parent/home")}><Home className="h-5 w-5" />首页</Link>
+          <Link href="/parent/homework" className={navClass("/parent/homework")}><BookOpenCheck className="h-5 w-5" />作业</Link>
+          <Link href="/parent/assistant" className={navClass("/parent/assistant")}><MessageCircle className="h-5 w-5" />AI 助手</Link>
+          <Link href="/parent/profile" className={navClass("/parent/profile")}><UserRound className="h-5 w-5" />我的</Link>
         </div>
       </nav>
     </main>
