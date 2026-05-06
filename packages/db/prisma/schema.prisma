@@ -574,6 +574,10 @@ model AiActionLog {
   entities    Json?
   riskLevel   AiRiskLevel @default(low)
   confidence  Float?
+  promptTokenCount Int @default(0)
+  completionTokenCount Int @default(0)
+  totalTokenCount Int @default(0)
+  costCents   Int @default(0)
   requiresConfirmation Boolean @default(true)
   confirmedAt DateTime?
   result      String?

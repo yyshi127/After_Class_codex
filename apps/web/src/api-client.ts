@@ -267,6 +267,10 @@ export type AiActionLogItem = {
   entities: unknown;
   riskLevel: "low" | "medium" | "high";
   confidence: number | null;
+  promptTokenCount: number;
+  completionTokenCount: number;
+  totalTokenCount: number;
+  costCents: number;
   requiresConfirmation: boolean;
   confirmedAt: string | null;
   result: string | null;

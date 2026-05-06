@@ -206,17 +206,20 @@ export class HomeworkService {
     const homeworkText =
       review?.status === HomeworkStatus.completed ? "作业已完成批改并反馈" : review?.status === HomeworkStatus.needs_correction ? "作业需要订正" : "作业批改待确认";
     const teacherNote = dto.teacherNote?.trim();
+    const rawInput = teacherNote || `generate feedback draft for ${student.name}`;
     const draft = {
       behavior: teacherNote ? `课堂状态稳定，${teacherNote}` : `课堂状态稳定，${attendanceText}，能跟随晚辅流程完成学习任务。`,
       homework: `${homeworkText}，书写和订正情况建议老师发布前再核对一次。`,
       knowledge: review?.subject ? `${review.subject}相关知识点掌握情况整体正常，错题部分建议结合错题本继续巩固。` : "知识掌握情况整体正常，薄弱点建议结合错题本继续巩固。",
     };
+    const promptTokenCount = this.estimateTokenCount(rawInput);
+    const completionTokenCount = this.estimateTokenCount(JSON.stringify(draft));
 
     const log = await this.prisma.aiActionLog.create({
       data: {
         campusId: student.campusId,
         actorUserId: user.id,
-        rawInput: teacherNote || `generate feedback draft for ${student.name}`,
+        rawInput,
         intent: "teacher_feedback_draft",
         entities: {
           studentId: student.id,
@@ -226,6 +229,10 @@ export class HomeworkService {
         },
         riskLevel: AiRiskLevel.low,
         confidence: 0.78,
+        promptTokenCount,
+        completionTokenCount,
+        totalTokenCount: promptTokenCount + completionTokenCount,
+        costCents: 0,
         requiresConfirmation: true,
         result: "draft_generated",
       },
@@ -458,5 +465,9 @@ export class HomeworkService {
     if (user.role !== UserRole.admin && user.role !== UserRole.teacher) {
       throw new ForbiddenException("Only admin or teacher can operate homework feedback");
     }
+  }
+
+  private estimateTokenCount(text: string) {
+    return Math.max(1, Math.ceil(text.length / 4));
   }
 }

@@ -18,6 +18,8 @@ export class AiService {
     const startedAt = Date.now();
     const result = await provider.recognize(dto.input, { timeoutMs: 1500 });
     const campusId = dto.campusId && user.campusIds.includes(dto.campusId) ? dto.campusId : user.campusIds[0] ?? null;
+    const promptTokenCount = this.estimateTokenCount(dto.input);
+    const completionTokenCount = this.estimateTokenCount(JSON.stringify(result));
 
     const log = await this.prisma.aiActionLog.create({
       data: {
@@ -32,6 +34,10 @@ export class AiService {
         },
         riskLevel: result.riskLevel as AiRiskLevel,
         confidence: result.confidence,
+        promptTokenCount,
+        completionTokenCount,
+        totalTokenCount: promptTokenCount + completionTokenCount,
+        costCents: 0,
         requiresConfirmation: result.requiresConfirmation,
         result: result.refusalReason ?? "intent_recognized",
       },
@@ -41,5 +47,9 @@ export class AiService {
       ...result,
       logId: log.id,
     };
+  }
+
+  private estimateTokenCount(text: string) {
+    return Math.max(1, Math.ceil(text.length / 4));
   }
 }
