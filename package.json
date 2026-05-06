@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "smoke:api": "powershell -ExecutionPolicy Bypass -File scripts/smoke-api.ps1",
+    "perf:api": "powershell -ExecutionPolicy Bypass -File scripts/perf-api.ps1",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "db:generate": "pnpm --filter @afterclass/db prisma:generate",

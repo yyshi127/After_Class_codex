@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import type { AuthenticatedUser } from "../auth/types";
 import { AccessService } from "../access/access.service";
+import { paginatedResult, parsePagination, type PaginationQuery } from "../common/pagination";
 import { PrismaService } from "../prisma/prisma.service";
 import { BindGuardianDto } from "./dto/bind-guardian.dto";
 import { CreateStudentDto } from "./dto/create-student.dto";
@@ -16,12 +17,15 @@ export class StudentsService {
     private readonly accessService: AccessService,
   ) {}
 
-  async list(user: AuthenticatedUser, campusId?: string, classId?: string, status?: string) {
+  async list(user: AuthenticatedUser, campusId?: string, classId?: string, status?: string, paginationQuery: PaginationQuery = {}) {
+    const isPaginated = paginationQuery.page !== undefined || paginationQuery.pageSize !== undefined;
+    const pagination = parsePagination(paginationQuery);
+    const where = {
+      ...this.accessService.buildStudentScopeWhere(user, { campusId, classId }),
+      status: status || undefined,
+    };
     const students = await this.prisma.student.findMany({
-      where: {
-        ...this.accessService.buildStudentScopeWhere(user, { campusId, classId }),
-        status: status || undefined,
-      },
+      where,
       select: {
         id: true,
         campusId: true,
@@ -71,10 +75,11 @@ export class StudentsService {
         },
       },
       orderBy: { createdAt: "desc" },
-      take: 100,
+      skip: isPaginated ? pagination.skip : undefined,
+      take: isPaginated ? pagination.take : 100,
     });
 
-    return students.map(({ idCardNoEncrypted, services, guardians, ...student }) => {
+    const items = students.map(({ idCardNoEncrypted, services, guardians, ...student }) => {
       const idCardNo = decryptIdCard(idCardNoEncrypted);
       return {
         ...student,
@@ -87,6 +92,13 @@ export class StudentsService {
         })),
       };
     });
+
+    if (!isPaginated) {
+      return items;
+    }
+
+    const total = await this.prisma.student.count({ where });
+    return paginatedResult(items, total, pagination.page, pagination.pageSize);
   }
 
   async create(user: AuthenticatedUser, dto: CreateStudentDto) {

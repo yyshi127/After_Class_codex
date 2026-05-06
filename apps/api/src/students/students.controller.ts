@@ -23,8 +23,10 @@ export class StudentsController {
     @Query("campusId") campusId?: string,
     @Query("classId") classId?: string,
     @Query("status") status?: string,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
   ) {
-    return this.studentsService.list(user, campusId, classId, status);
+    return this.studentsService.list(user, campusId, classId, status, { page, pageSize });
   }
 
   @Roles(UserRole.admin)
