@@ -69,7 +69,10 @@ function recognizeByRules(input: string): AiActionResult {
   const lowered = normalized.toLowerCase();
   const entities: Record<string, unknown> = { rawText: normalized };
 
-  if (containsAny(normalized, ["删除", "批量修改费用", "导出身份证", "导出敏感"])) {
+  if (
+    containsAny(normalized, ["删除", "导出身份证", "导出敏感", "批量修改费用", "鍒犻櫎", "鎵归噺淇敼璐圭敤", "瀵煎嚭韬唤璇?", "瀵煎嚭鏁忔劅"]) ||
+    containsAny(lowered, ["delete", "export id card", "export sensitive", "bulk update fee"])
+  ) {
     return result("unknown", "high", entities, 0.75, true, "高风险操作不直接执行");
   }
 
