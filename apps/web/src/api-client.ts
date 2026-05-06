@@ -362,10 +362,17 @@ export function createClass(payload: { campusId: string; name: string }) {
   });
 }
 
-export function listStudentAttendance(params: { campusId?: string; studentId?: string }) {
+export function listStudentAttendance(params: {
+  campusId?: string;
+  studentId?: string;
+  classId?: string;
+  serviceTypeId?: string;
+}) {
   const search = new URLSearchParams();
   if (params.campusId) search.set("campusId", params.campusId);
   if (params.studentId) search.set("studentId", params.studentId);
+  if (params.classId) search.set("classId", params.classId);
+  if (params.serviceTypeId) search.set("serviceTypeId", params.serviceTypeId);
   const query = search.toString();
   return apiRequest<StudentAttendanceItem[]>(`/attendance/students${query ? `?${query}` : ""}`);
 }
@@ -485,6 +492,12 @@ export function listNotifications(params: { campusId?: string; studentId?: strin
   if (params.studentId) search.set("studentId", params.studentId);
   const query = search.toString();
   return apiRequest<NotificationItem[]>(`/notifications${query ? `?${query}` : ""}`);
+}
+
+export function retryNotification(id: string) {
+  return apiRequest<NotificationItem>(`/notifications/${encodeURIComponent(id)}/retry`, {
+    method: "POST",
+  });
 }
 
 export function getServiceSummary(studentId: string) {

@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/commo
 import { AttendanceStatus, TeacherAttendanceStatus, UserRole } from "@prisma/client";
 import { AccessService } from "../access/access.service";
 import type { AuthenticatedUser } from "../auth/types";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { StudentCheckInDto } from "./dto/student-check-in.dto";
 import { TeacherAttendanceDto } from "./dto/teacher-attendance.dto";
@@ -11,12 +12,29 @@ export class AttendanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessService: AccessService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
-  listStudentAttendance(user: AuthenticatedUser, campusId?: string, studentId?: string) {
+  listStudentAttendance(
+    user: AuthenticatedUser,
+    campusId?: string,
+    studentId?: string,
+    classId?: string,
+    serviceTypeId?: string,
+  ) {
+    const studentWhere = this.accessService.buildStudentScopeWhere(user, { campusId, classId, studentId });
+    if (serviceTypeId) {
+      studentWhere.services = {
+        some: {
+          serviceTypeId,
+          validTo: { gte: new Date() },
+        },
+      };
+    }
+
     return this.prisma.attendanceRecord.findMany({
       where: {
-        student: this.accessService.buildStudentScopeWhere(user, { campusId, studentId }),
+        student: studentWhere,
       },
       include: {
         student: { select: { id: true, name: true, class: { select: { id: true, name: true } } } },
@@ -33,15 +51,6 @@ export class AttendanceService {
 
     const student = await this.prisma.student.findFirst({
       where: this.accessService.buildStudentScopeWhere(user, { studentId: dto.studentId }),
-      include: {
-        guardians: {
-          include: {
-            guardian: {
-              include: { userLinks: true },
-            },
-          },
-        },
-      },
     });
     if (!student) {
       throw new NotFoundException("Student not found");
@@ -58,20 +67,11 @@ export class AttendanceService {
       },
     });
 
-    for (const binding of student.guardians) {
-      await this.prisma.notification.create({
-        data: {
-          campusId: student.campusId,
-          studentId: student.id,
-          guardianId: binding.guardianId,
-          recipientUserId: binding.guardian.userLinks[0]?.userId,
-          title: "孩子已到校",
-          content: `${student.name} 已于 ${occurredAt.toLocaleString("zh-CN")} 到达托管校区。`,
-          status: "sent",
-          sentAt: new Date(),
-        },
-      });
-    }
+    await this.notificationsService.createForStudentGuardians({
+      studentId: student.id,
+      title: "孩子已到校",
+      content: `${student.name} 已于 ${occurredAt.toLocaleString("zh-CN")} 到达托管校区。`,
+    });
 
     return record;
   }

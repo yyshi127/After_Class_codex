@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CalendarCheck2, Camera, LogOut, RefreshCcw, UserCheck } from "lucide-react";
 import {
   ClassItem,
+  NotificationItem,
   StudentAttendanceItem,
   StudentItem,
   TeacherAttendanceItem,
   listClasses,
+  listNotifications,
   listStudentAttendance,
   listStudents,
   listTeacherAttendance,
+  retryNotification,
 } from "../../../src/api-client";
 import { AuthUser, clearSession, getStoredToken, getStoredUser, loadMe, saveSession } from "../../../src/auth-client";
 
@@ -24,6 +27,12 @@ const attendanceLabels: Record<string, string> = {
   absent: "缺勤",
 };
 
+const notificationStatusLabels: Record<NotificationItem["status"], string> = {
+  pending: "待发送",
+  sent: "已发送",
+  failed: "发送失败",
+};
+
 export default function AdminAttendancePage() {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -31,8 +40,11 @@ export default function AdminAttendancePage() {
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [studentAttendance, setStudentAttendance] = useState<StudentAttendanceItem[]>([]);
   const [teacherAttendance, setTeacherAttendance] = useState<TeacherAttendanceItem[]>([]);
+  const [notificationRows, setNotificationRows] = useState<NotificationItem[]>([]);
   const [campusId, setCampusId] = useState("");
   const [classId, setClassId] = useState("");
+  const [serviceTypeId, setServiceTypeId] = useState("");
+  const [retryingNotificationId, setRetryingNotificationId] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -68,7 +80,7 @@ export default function AdminAttendancePage() {
     if (!selectedCampusId) return;
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCampusId, selectedClassId]);
+  }, [selectedCampusId, selectedClassId, serviceTypeId]);
 
   async function reload() {
     setLoading(true);
@@ -78,14 +90,20 @@ export default function AdminAttendancePage() {
       setClasses(classRows);
       const activeClassId = selectedClassId || classRows[0]?.id || "";
       if (!classId && activeClassId) setClassId(activeClassId);
-      const [studentRows, studentAttendanceRows, teacherAttendanceRows] = await Promise.all([
+      const [studentRows, studentAttendanceRows, teacherAttendanceRows, notificationList] = await Promise.all([
         activeClassId ? listStudents({ campusId: selectedCampusId, classId: activeClassId, status: "active" }) : [],
-        listStudentAttendance({ campusId: selectedCampusId }),
+        listStudentAttendance({
+          campusId: selectedCampusId,
+          classId: activeClassId || undefined,
+          serviceTypeId: serviceTypeId || undefined,
+        }),
         listTeacherAttendance(selectedCampusId),
+        listNotifications({ campusId: selectedCampusId }),
       ]);
       setStudents(studentRows);
       setStudentAttendance(studentAttendanceRows);
       setTeacherAttendance(teacherAttendanceRows);
+      setNotificationRows(notificationList);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "加载失败");
     } finally {
@@ -95,6 +113,40 @@ export default function AdminAttendancePage() {
 
   function latestStudentAttendance(studentId: string) {
     return studentAttendance.find((item) => item.studentId === studentId);
+  }
+
+  const serviceTypeOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const student of students) {
+      const service = student.currentService?.serviceType;
+      if (service) {
+        map.set(service.id, service.name);
+      }
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [students]);
+
+  const filteredStudents = useMemo(
+    () => (serviceTypeId ? students.filter((student) => student.currentService?.serviceType.id === serviceTypeId) : students),
+    [serviceTypeId, students],
+  );
+
+  function latestArrivalNotification(studentId: string) {
+    return notificationRows.find((item) => item.studentId === studentId && item.title === "孩子已到校");
+  }
+
+  async function onRetryNotification(notificationId: string) {
+    setRetryingNotificationId(notificationId);
+    setMessage("");
+    try {
+      await retryNotification(notificationId);
+      await reload();
+      setMessage("通知已重试");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "通知重试失败");
+    } finally {
+      setRetryingNotificationId("");
+    }
   }
 
   function logout() {
@@ -126,6 +178,10 @@ export default function AdminAttendancePage() {
               <select className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={selectedClassId} onChange={(event) => setClassId(event.target.value)}>
                 {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
+              <select className="h-11 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft outline-none" value={serviceTypeId} onChange={(event) => setServiceTypeId(event.target.value)}>
+                <option value="">全部托管类型</option>
+                {serviceTypeOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
               <button onClick={() => void reload()} className="flex h-11 items-center gap-2 rounded-2xl bg-serenity-bg px-4 text-sm shadow-insetSoft">
                 <RefreshCcw className="h-4 w-4" />
                 刷新
@@ -145,31 +201,51 @@ export default function AdminAttendancePage() {
                 <CalendarCheck2 className="h-5 w-5 text-serenity-blue" />
                 <h2 className="text-xl font-semibold">学生考勤</h2>
               </div>
-              <span className="text-sm text-serenity-muted">{loading ? "加载中" : `${students.length} 人`}</span>
+              <span className="text-sm text-serenity-muted">{loading ? "加载中" : `${filteredStudents.length} 人`}</span>
             </div>
             <div className="mt-5 overflow-x-auto">
-              <table className="w-full min-w-[780px] border-separate border-spacing-y-2 text-left text-sm">
+              <table className="w-full min-w-[980px] border-separate border-spacing-y-2 text-left text-sm">
                 <thead className="text-serenity-muted">
-                  <tr><th>学生</th><th>班级</th><th>状态</th><th>时间</th><th>到托照片</th></tr>
+                  <tr><th>学生</th><th>班级</th><th>状态</th><th>时间</th><th>到托照片</th><th>通知状态</th><th>操作</th></tr>
                 </thead>
                 <tbody>
-                  {students.map((student) => {
+                  {filteredStudents.map((student) => {
                     const attendance = latestStudentAttendance(student.id);
+                    const notification = latestArrivalNotification(student.id);
                     return (
                       <tr key={student.id} className="bg-serenity-bg shadow-insetSoft">
                         <td className="rounded-l-2xl px-4 py-3 font-semibold">{student.name}</td>
                         <td className="px-4 py-3">{student.class?.name ?? "未分班"}</td>
                         <td className="px-4 py-3">{attendanceLabels[attendance?.status ?? "pending"]}</td>
                         <td className="px-4 py-3">{attendance ? new Date(attendance.occurredAt).toLocaleString("zh-CN") : "-"}</td>
-                        <td className="rounded-r-2xl px-4 py-3">
+                        <td className="px-4 py-3">
                           {attendance?.photoUrl ? <span className="inline-flex items-center gap-2"><Camera className="h-4 w-4" />已上传</span> : "暂无"}
+                        </td>
+                        <td className="px-4 py-3">
+                          {notification ? notificationStatusLabels[notification.status] : "-"}
+                          {notification?.status === "failed" && notification.failReason ? (
+                            <div className="mt-1 text-xs text-serenity-muted">{notification.failReason}</div>
+                          ) : null}
+                        </td>
+                        <td className="rounded-r-2xl px-4 py-3">
+                          {notification?.status === "failed" ? (
+                            <button
+                              onClick={() => void onRetryNotification(notification.id)}
+                              disabled={retryingNotificationId === notification.id}
+                              className="rounded-xl bg-white px-3 py-1.5 text-xs text-serenity-ink shadow-insetSoft disabled:opacity-60"
+                            >
+                              {retryingNotificationId === notification.id ? "重试中..." : "重试通知"}
+                            </button>
+                          ) : (
+                            "-"
+                          )}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-              {!students.length ? <div className="rounded-3xl bg-serenity-bg p-8 text-center text-sm text-serenity-muted shadow-insetSoft">当前班级暂无学生</div> : null}
+              {!filteredStudents.length ? <div className="rounded-3xl bg-serenity-bg p-8 text-center text-sm text-serenity-muted shadow-insetSoft">当前筛选条件暂无学生</div> : null}
             </div>
           </article>
 

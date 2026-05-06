@@ -16,8 +16,10 @@ export class AttendanceController {
     @CurrentUser() user: AuthenticatedUser,
     @Query("campusId") campusId?: string,
     @Query("studentId") studentId?: string,
+    @Query("classId") classId?: string,
+    @Query("serviceTypeId") serviceTypeId?: string,
   ) {
-    return this.attendanceService.listStudentAttendance(user, campusId, studentId);
+    return this.attendanceService.listStudentAttendance(user, campusId, studentId, classId, serviceTypeId);
   }
 
   @Post("students/check-in")
