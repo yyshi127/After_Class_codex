@@ -281,6 +281,16 @@ export type AiActionLogItem = {
   confirmedBy?: { id: string; name: string; role: string } | null;
 };
 
+export type AiIntentRecognitionResult = {
+  intent: string;
+  riskLevel: "low" | "medium" | "high";
+  entities: Record<string, unknown>;
+  confidence: number;
+  requiresConfirmation: boolean;
+  refusalReason?: string;
+  logId: string;
+};
+
 export type MistakeItem = {
   id: string;
   campusId: string;
@@ -757,6 +767,26 @@ export function getAdminDashboard() {
 
 export function listAiActionLogs() {
   return apiRequest<AiActionLogItem[]>("/ai-action-logs");
+}
+
+export function recognizeAiIntent(payload: { input: string; campusId?: string }) {
+  return apiRequest<AiIntentRecognitionResult>("/ai/intent-recognition", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function confirmTeacherQuickEntry(payload: {
+  logId: string;
+  studentId: string;
+  action: "check_in" | "leave" | "absent";
+  occurredAt?: string;
+  secondConfirmed?: boolean;
+}) {
+  return apiRequest<StudentAttendanceItem>("/ai/teacher-quick-entry/confirm", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function listMistakes(params: { campusId?: string; studentId?: string }) {

@@ -34,6 +34,7 @@ const roleLanding: Record<AuthUser["role"], Array<{ title: string; text: string;
     { title: "财务核算", text: "查看缴费记录、服务到期、班级收入和老师课费。", href: "/admin/finance" },
   ],
   teacher: [
+    { title: "AI 快捷录入", text: "输入自然语言识别学生考勤动作，老师确认后写入。", href: "/teacher/ai" },
     { title: "今日工作台", text: "查看负责班级、学生到校、请假、缺勤和作业状态。", href: "/teacher/today" },
     { title: "作业反馈", text: "上传作业图片、发布批改反馈、确认错题并生成练习单。", href: "/teacher/homework" },
   ],
